@@ -1,0 +1,55 @@
+{
+  "name": "specservis-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:quiet": "eslint . --quiet",
+    "test": "npm run test:rules",
+    "test:rules": "node scripts/test-relevance.mjs && node scripts/test-territory.mjs && node scripts/test-team-matcher.mjs && node scripts/test-workbook-dictionary.mjs && node scripts/test-prozorro-analytics.mjs && node scripts/test-analytics-v2.mjs && node scripts/test-analytics-v2-schedule.mjs && node scripts/test-confidential-dashboard.mjs && NODE_OPTIONS=--conditions=react-server tsx scripts/test-account-credentials.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/test-confidential-auth.mjs && NODE_OPTIONS=--conditions=react-server tsx scripts/test-tender-workspace.ts && node scripts/test-spending-payments.mjs",
+    "verify": "npm run typecheck && npm run lint:quiet && npm test && npm run build",
+    "snapshot:internal": "node --env-file-if-exists=.env.local scripts/build-internal-snapshot.mjs",
+    "snapshot:market": "node --env-file-if-exists=.env.local scripts/build-market-snapshot.mjs",
+    "snapshot:competitors": "node --env-file-if-exists=.env.local scripts/build-competitor-snapshot.mjs",
+    "snapshot:projects": "node --env-file-if-exists=.env.local scripts/build-projects-snapshot.mjs",
+    "analytics:migrate": "node --env-file-if-exists=.env.local scripts/migrate-analytics-v2.mjs",
+    "analytics:import": "NODE_OPTIONS=--conditions=react-server tsx --env-file-if-exists=.env.local scripts/import-analytics-v2.ts",
+    "analytics:sync": "NODE_OPTIONS=--conditions=react-server tsx --env-file-if-exists=.env.local scripts/sync-analytics-v2.ts",
+    "workspace:import": "NODE_OPTIONS=--conditions=react-server tsx --env-file-if-exists=.env.local scripts/import-tender-workbook.ts"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.8.0",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.28.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.12",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
+  }
+}
