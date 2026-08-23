@@ -1,5 +1,17 @@
 # Troubleshooting
 
+## Reconnecting a Vercel integration returns HTTP 500
+
+- **Error:** `Connect integration resource to project` returns HTTP 500 while the storage resource still lists the project, but its `environmentVariables` array is empty.
+- **Cause:** Vercel retained stale project-connection metadata after the integration variables were removed, so creating a second connection collided with the incomplete one.
+- **Fix:** Confirm the resource and project IDs, disconnect only that resource/project pair, then reconnect the same resource through the connections API with `envVarEnvironments: ["production"]` and `makeEnvVarsSensitive: true`. Verify that Production contains the injected variables and Preview remains empty.
+
+## TypeScript still references a removed temporary Next.js route
+
+- **Error:** `.next/dev/types/validator.ts` reports `TS2307` for a page that was already deleted after a local visual check.
+- **Cause:** The development route validator is cached separately from production route types and can keep the old import after the temporary page is removed.
+- **Fix:** Stop the dev server, move the explicit `.next/dev` cache directory out of the project, then rerun `npm run verify`; do not change application imports to satisfy stale generated types.
+
 ## Sensitive Vercel variable is empty after `vercel env pull`
 
 - **Error:** A sensitive custom environment variable exists in `vercel env ls`, but the pulled `.env.local` contains an empty value and local JSON parsing fails.

@@ -22,6 +22,7 @@ export type TurnoverSummary = {
   avgFte: number | null;
   lastFte: number | null;
   turnoverPerFte: number | null;
+  lastTurnoverPerFte: number | null;
   payrollPerFte: number | null;
 };
 
@@ -112,7 +113,7 @@ export function deriveTurnoverMonth(record: ConfidentialTurnoverRecord): Turnove
     ...record,
     grossTurnover,
     strategicTurnover,
-    turnoverPerFte: record.fte ? grossTurnover / record.fte : null,
+    turnoverPerFte: record.fte && record.baseTurnover !== null ? record.baseTurnover / record.fte : null,
     payrollPerFte: record.payroll !== null && record.fte ? record.payroll / record.fte : null,
     payrollShare: record.payroll !== null && record.baseTurnover ? record.payroll / record.baseTurnover : null,
   };
@@ -128,6 +129,8 @@ function summarizeTurnover(months: TurnoverMonth[]): TurnoverSummary {
   const payroll = sum(payrollMonths.map((month) => month.payroll));
   const payrollFte = sum(payrollMonths.map((month) => month.fte));
   const payrollBase = sum(payrollMonths.map((month) => month.baseTurnover));
+  const productivityMonths = months.filter((month) => month.turnoverPerFte !== null);
+  const latestProductivity = [...months].reverse().find((month) => month.turnoverPerFte !== null);
   return {
     months: months.length,
     grossTurnover,
@@ -139,7 +142,8 @@ function summarizeTurnover(months: TurnoverMonth[]): TurnoverSummary {
     payrollShare: divide(payroll, payrollBase),
     avgFte: divide(totalFte, fteMonths.length),
     lastFte: [...months].reverse().find((month) => month.fte !== null)?.fte ?? null,
-    turnoverPerFte: divide(grossTurnover, totalFte),
+    turnoverPerFte: divide(sum(productivityMonths.map((month) => month.turnoverPerFte)), productivityMonths.length),
+    lastTurnoverPerFte: latestProductivity?.turnoverPerFte ?? null,
     payrollPerFte: divide(payroll, payrollFte),
   };
 }
@@ -167,9 +171,8 @@ function entityMix(months: TurnoverMonth[]): EntityMix[] {
     { id: "naryshkov", label: "ФОП Наришков", value: sum(months.map((month) => month.fopNaryshkov)) },
     { id: "pashkov", label: "ФОП Пашков", value: sum(months.map((month) => month.fopPashkov)) },
     { id: "danilenko", label: "ФОП Даниленко", value: sum(months.map((month) => month.fopDanilenko)) },
-    { id: "strategic", label: "Coca-Cola + ABInBev", value: sum(months.map((month) => month.strategicTurnover)) },
   ].filter((item) => item.value !== 0);
-  const reportedTotal = sum(months.map((month) => month.grossTurnover));
+  const reportedTotal = sum(months.map((month) => month.baseTurnover));
   const reconciliation = reportedTotal - sum(values.map((item) => item.value));
   if (Math.abs(reconciliation) >= 1) {
     values.push({ id: "reconciliation", label: "Нерозподілені коригування", value: reconciliation });
@@ -192,6 +195,7 @@ function matchedPayrollEconomics(current: TurnoverMonth[], byPeriod: Map<string,
   const previousBase = sum(pairs.map(([, month]) => month.baseTurnover));
   const payrollGrowth = growth(currentPayroll, previousPayroll);
   const grossGrowth = growth(currentGross, previousGross);
+  const baseGrowth = growth(currentBase, previousBase);
   return {
     months: pairs.length,
     currentPayroll,
@@ -202,8 +206,8 @@ function matchedPayrollEconomics(current: TurnoverMonth[], byPeriod: Map<string,
     grossGrowth,
     currentBase,
     previousBase,
-    baseGrowth: growth(currentBase, previousBase),
-    payrollGrowthGap: payrollGrowth === null || grossGrowth === null ? null : payrollGrowth - grossGrowth,
+    baseGrowth,
+    payrollGrowthGap: payrollGrowth === null || baseGrowth === null ? null : payrollGrowth - baseGrowth,
   };
 }
 
@@ -223,16 +227,16 @@ function movement(months: TurnoverMonth[], byPeriod: Map<string, TurnoverMonth>)
 }
 
 function turnoverStructure(months: TurnoverMonth[], mix: EntityMix[]): TurnoverStructure {
-  const gross = sum(months.map((month) => month.grossTurnover));
+  const base = sum(months.map((month) => month.baseTurnover));
   const recordedCash = sum(months.map((month) => (month.refkeyCash ?? 0) + (month.specservisCash ?? 0)));
   const positive = mix
     .filter((item) => item.id !== "reconciliation" && item.value > 0)
     .sort((a, b) => b.value - a.value);
   return {
     recordedCash,
-    recordedCashShare: divide(recordedCash, gross),
+    recordedCashShare: divide(recordedCash, base),
     topEntity: positive[0] ?? null,
-    topThreeShare: divide(sum(positive.slice(0, 3).map((item) => item.value)), gross),
+    topThreeShare: divide(sum(positive.slice(0, 3).map((item) => item.value)), base),
   };
 }
 
@@ -279,6 +283,6 @@ export function buildConfidentialDashboard(records: ConfidentialTurnoverRecord[]
     },
     entityMix: mix,
     annual,
-    peak: months.reduce<TurnoverMonth | null>((peak, month) => !peak || month.grossTurnover > peak.grossTurnover ? month : peak, null),
+    peak: months.reduce<TurnoverMonth | null>((peak, month) => !peak || (month.baseTurnover ?? 0) > (peak.baseTurnover ?? 0) ? month : peak, null),
   };
 }

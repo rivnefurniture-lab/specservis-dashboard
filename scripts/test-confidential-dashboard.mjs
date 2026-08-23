@@ -18,12 +18,17 @@ const records = [
 const derived = deriveTurnoverMonth(records[3]);
 assert.equal(derived.strategicTurnover, 25);
 assert.equal(derived.grossTurnover, 225);
+assert.equal(derived.turnoverPerFte, 40, "director productivity follows base turnover / FTE, as in the source workbook");
 assert.equal(derived.payrollShare, null, "unknown payroll must not become zero");
 
 const dashboard = buildConfidentialDashboard(records, "ytd");
 assert.deepEqual(dashboard.months.map((month) => month.period), ["2026-01", "2026-02"]);
 assert.deepEqual(dashboard.comparisonMonths.map((month) => month.period), ["2025-01", "2025-02"]);
 assert.equal(dashboard.summary.grossTurnover, 395);
+assert.equal(dashboard.summary.baseTurnover, 360);
+assert.equal(dashboard.summary.lastTurnoverPerFte, 40);
+assert.equal(dashboard.summary.turnoverPerFte, 40, "period productivity is the average of monthly turnover/FTE values");
+assert.equal(dashboard.summary.avgFte, 4.5);
 assert.equal(dashboard.summary.payroll, 24);
 assert.equal(dashboard.summary.payrollMonths, 1);
 assert.equal(dashboard.payrollComparison?.months, 1, "payroll comparison must use matching known months only");
@@ -31,14 +36,15 @@ assert.equal(dashboard.payrollComparison?.current, 24);
 assert.equal(dashboard.payrollComparison?.previous, 16);
 assert.equal(dashboard.payrollEconomics?.grossGrowth, 170 / 90 - 1);
 assert.equal(dashboard.payrollEconomics?.payrollGrowth, .5);
-assert.equal(dashboard.payrollEconomics?.payrollGrowthGap, .5 - (170 / 90 - 1));
+assert.equal(dashboard.payrollEconomics?.payrollGrowthGap, -.5);
 assert.equal(dashboard.movement.latestPeriod, "2026-02");
 assert.equal(dashboard.movement.grossMonthOverMonth, 225 / 170 - 1);
 assert.equal(dashboard.movement.grossYearOverYear, 225 / 110 - 1);
 assert.equal(dashboard.structure.recordedCash, 30);
 assert.equal(dashboard.structure.topEntity?.id, "specservis");
-assert.equal(dashboard.structure.topThreeShare, 175 / 395);
-assert.equal(dashboard.entityMix.reduce((sum, item) => sum + item.value, 0), dashboard.summary.grossTurnover);
+assert.equal(dashboard.structure.topThreeShare, 170 / 360);
+assert.equal(dashboard.entityMix.some((item) => item.id === "strategic"), false, "strategic contracts stay outside the company mix");
+assert.equal(dashboard.entityMix.reduce((sum, item) => sum + item.value, 0), dashboard.summary.baseTurnover);
 assert.equal(dashboard.peak?.period, "2026-02");
 assert.equal(dashboard.annual[0].complete, false);
 
