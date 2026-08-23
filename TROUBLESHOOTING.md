@@ -8,9 +8,9 @@
 
 ## TypeScript still references a removed temporary Next.js route
 
-- **Error:** `.next/dev/types/validator.ts` reports `TS2307` for a page that was already deleted after a local visual check.
-- **Cause:** The development route validator is cached separately from production route types and can keep the old import after the temporary page is removed.
-- **Fix:** Stop the dev server, move the explicit `.next/dev` cache directory out of the project, then rerun `npm run verify`; do not change application imports to satisfy stale generated types.
+- **Error:** `.next/dev/types/validator.ts` or `.next/types/validator.ts` reports `TS2307` for a page that was already deleted after a local visual check.
+- **Cause:** Next.js route types are generated artifacts and can keep the old import after the temporary page is removed.
+- **Fix:** Stop the local server, move only the stale `.next/dev` or `.next/types` directory out of the project, run `npx next typegen`, then rerun `npm run verify`; do not change application imports to satisfy stale generated types.
 
 ## Sensitive Vercel variable is empty after `vercel env pull`
 

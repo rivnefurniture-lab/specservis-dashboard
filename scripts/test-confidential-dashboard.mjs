@@ -45,6 +45,14 @@ assert.equal(dashboard.structure.topEntity?.id, "specservis");
 assert.equal(dashboard.structure.topThreeShare, 170 / 360);
 assert.equal(dashboard.entityMix.some((item) => item.id === "strategic"), false, "strategic contracts stay outside the company mix");
 assert.equal(dashboard.entityMix.reduce((sum, item) => sum + item.value, 0), dashboard.summary.baseTurnover);
+assert.equal(dashboard.comparisonEntityMix.reduce((sum, item) => sum + item.value, 0), dashboard.comparison?.baseTurnover);
+assert.deepEqual(dashboard.history.map((period) => period.label), ["2025", "2026"]);
+assert.equal(dashboard.history[0].baseTurnover, 180);
+assert.equal(dashboard.history[0].lastTurnoverPerFte, 50);
+assert.equal(dashboard.history[0].turnoverPerFte, 45);
+assert.equal(dashboard.history[0].avgFte, 2);
+assert.equal(dashboard.history[1].baseTurnover, 360);
+assert.deepEqual(buildConfidentialDashboard(records, "2026").history.map((period) => period.label), ["2025", "2026"], "a partial current year compares the months actually available");
 assert.equal(dashboard.peak?.period, "2026-02");
 assert.equal(dashboard.annual[0].complete, false);
 

@@ -30,6 +30,13 @@ export type EntityMix = { id: string; label: string; value: number; share: numbe
 
 export type AnnualTurnover = TurnoverSummary & { year: string; complete: boolean };
 
+export type ComparableTurnover = TurnoverSummary & {
+  id: string;
+  label: string;
+  from: string;
+  to: string;
+};
+
 export type TurnoverMovement = {
   latestPeriod: string | null;
   previousPeriod: string | null;
@@ -79,6 +86,8 @@ export type ConfidentialDashboardModel = {
     turnoverPerFte: number | null;
   };
   entityMix: EntityMix[];
+  comparisonEntityMix: EntityMix[];
+  history: ComparableTurnover[];
   annual: AnnualTurnover[];
   peak: TurnoverMonth | null;
 };
@@ -240,6 +249,38 @@ function turnoverStructure(months: TurnoverMonth[], mix: EntityMix[]): TurnoverS
   };
 }
 
+function comparableHistory(allMonths: TurnoverMonth[], range: TurnoverRangeOption): ComparableTurnover[] {
+  if (range.id === "all") {
+    return [...new Set(allMonths.map((month) => month.period.slice(0, 4)))].map((year) => {
+      const yearMonths = allMonths.filter((month) => month.period.startsWith(`${year}-`));
+      return { id: year, label: year, from: `${year}-01`, to: `${year}-12`, ...summarizeTurnover(yearMonths) };
+    });
+  }
+
+  const selectedMonths = allMonths.filter((month) => month.period >= range.from && month.period <= range.to);
+  const effectiveFrom = selectedMonths[0]?.period ?? range.from;
+  const effectiveTo = selectedMonths.at(-1)?.period ?? range.to;
+  const firstIndex = monthIndex(allMonths[0]?.period ?? range.from);
+  const expectedMonths = monthIndex(effectiveTo) - monthIndex(effectiveFrom) + 1;
+  const periods: ComparableTurnover[] = [];
+  for (let offset = 0; monthIndex(effectiveFrom) - offset * 12 >= firstIndex; offset += 1) {
+    const from = periodFromIndex(monthIndex(effectiveFrom) - offset * 12);
+    const to = periodFromIndex(monthIndex(effectiveTo) - offset * 12);
+    const months = allMonths.filter((month) => month.period >= from && month.period <= to);
+    if (months.length !== expectedMonths) continue;
+    const fromYear = from.slice(0, 4);
+    const toYear = to.slice(0, 4);
+    periods.push({
+      id: `${from}:${to}`,
+      label: fromYear === toYear ? toYear : `${fromYear}/${toYear.slice(2)}`,
+      from,
+      to,
+      ...summarizeTurnover(months),
+    });
+  }
+  return periods.reverse();
+}
+
 export function buildConfidentialDashboard(records: ConfidentialTurnoverRecord[], rangeId = "ytd"): ConfidentialDashboardModel {
   const allMonths = [...records].sort((a, b) => a.period.localeCompare(b.period)).map(deriveTurnoverMonth);
   const options = confidentialRangeOptions(records);
@@ -282,6 +323,8 @@ export function buildConfidentialDashboard(records: ConfidentialTurnoverRecord[]
       turnoverPerFte: comparison ? growth(summary.turnoverPerFte, comparison.turnoverPerFte) : null,
     },
     entityMix: mix,
+    comparisonEntityMix: comparison ? entityMix(comparisonMonths) : [],
+    history: comparableHistory(allMonths, range),
     annual,
     peak: months.reduce<TurnoverMonth | null>((peak, month) => !peak || (month.baseTurnover ?? 0) > (peak.baseTurnover ?? 0) ? month : peak, null),
   };
