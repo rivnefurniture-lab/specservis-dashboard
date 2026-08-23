@@ -35,6 +35,8 @@ export type ComparableTurnover = TurnoverSummary & {
   label: string;
   from: string;
   to: string;
+  monthly: TurnoverMonth[];
+  cumulativeBaseTurnover: number[];
 };
 
 export type TurnoverMovement = {
@@ -250,10 +252,26 @@ function turnoverStructure(months: TurnoverMonth[], mix: EntityMix[]): TurnoverS
 }
 
 function comparableHistory(allMonths: TurnoverMonth[], range: TurnoverRangeOption): ComparableTurnover[] {
+  const period = (id: string, label: string, from: string, to: string, months: TurnoverMonth[]): ComparableTurnover => {
+    let runningTotal = 0;
+    return {
+      id,
+      label,
+      from,
+      to,
+      monthly: months,
+      cumulativeBaseTurnover: months.map((month) => {
+        runningTotal += month.baseTurnover ?? 0;
+        return runningTotal;
+      }),
+      ...summarizeTurnover(months),
+    };
+  };
+
   if (range.id === "all") {
     return [...new Set(allMonths.map((month) => month.period.slice(0, 4)))].map((year) => {
       const yearMonths = allMonths.filter((month) => month.period.startsWith(`${year}-`));
-      return { id: year, label: year, from: `${year}-01`, to: `${year}-12`, ...summarizeTurnover(yearMonths) };
+      return period(year, year, `${year}-01`, `${year}-12`, yearMonths);
     });
   }
 
@@ -270,13 +288,7 @@ function comparableHistory(allMonths: TurnoverMonth[], range: TurnoverRangeOptio
     if (months.length !== expectedMonths) continue;
     const fromYear = from.slice(0, 4);
     const toYear = to.slice(0, 4);
-    periods.push({
-      id: `${from}:${to}`,
-      label: fromYear === toYear ? toYear : `${fromYear}/${toYear.slice(2)}`,
-      from,
-      to,
-      ...summarizeTurnover(months),
-    });
+    periods.push(period(`${from}:${to}`, fromYear === toYear ? toYear : `${fromYear}/${toYear.slice(2)}`, from, to, months));
   }
   return periods.reverse();
 }

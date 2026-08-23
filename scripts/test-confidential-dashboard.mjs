@@ -52,6 +52,7 @@ assert.equal(dashboard.history[0].lastTurnoverPerFte, 50);
 assert.equal(dashboard.history[0].turnoverPerFte, 45);
 assert.equal(dashboard.history[0].avgFte, 2);
 assert.equal(dashboard.history[1].baseTurnover, 360);
+assert.deepEqual(dashboard.history[1].cumulativeBaseTurnover, [160, 360]);
 assert.deepEqual(buildConfidentialDashboard(records, "2026").history.map((period) => period.label), ["2025", "2026"], "a partial current year compares the months actually available");
 assert.equal(dashboard.peak?.period, "2026-02");
 assert.equal(dashboard.annual[0].complete, false);
