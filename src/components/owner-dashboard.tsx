@@ -69,12 +69,12 @@ const navigation = [
 ];
 
 const financeNavigation = [
-  { id: "finance-overview", label: "Огляд", hint: "Фінансовий пульс", marker: "ФІНАНСОВИЙ ПУЛЬС", icon: LayoutDashboard },
-  { id: "finance-focus", label: "Фокус власника", hint: "Ризики й дії", marker: "ФОКУС ВЛАСНИКА", icon: CircleAlert },
-  { id: "finance-dynamics", label: "Динаміка", hint: "Зміни та джерела", marker: "ДРАЙВЕР ЗМІНИ", icon: BarChart3 },
+  { id: "finance-overview", label: "Огляд", hint: "Фінансовий пульс", marker: "ОПЕРАЦІЙНИЙ ОБОРОТ ГРУПИ", icon: LayoutDashboard },
+  { id: "finance-focus", label: "Фокус власника", hint: "Ризики й дії", marker: "РІШЕННЯ ДЛЯ ВЛАСНИКА", icon: CircleAlert },
+  { id: "finance-dynamics", label: "Динаміка", hint: "Зміни та джерела", marker: "ЩО ДАЛО ЗМІНУ", icon: BarChart3 },
   { id: "finance-team", label: "Команда", hint: "FTE та продуктивність", marker: "ЕКОНОМІКА КОМАНДИ", icon: UsersRound },
-  { id: "finance-history", label: "Історія", hint: "Рік до року", marker: "РІК ДО РОКУ", icon: History },
-  { id: "finance-audit", label: "Місячний аудит", hint: "Фільтри й аномалії", marker: "МІСЯЧНИЙ АУДИТ", icon: ListFilter },
+  { id: "finance-history", label: "Історія", hint: "Рік до року", marker: "ЧИ ВИКОНУЄМО ТЕМП", icon: History },
+  { id: "finance-audit", label: "Місячний аудит", hint: "Фільтри й аномалії", marker: "ДЕТАЛІ ТА ПЕРЕВІРКА", icon: ListFilter },
 ] as const;
 
 function isViewAllowed(role: DashboardRole | undefined, view: View, workspaceAccess?: "manager" | "employee" | null) {

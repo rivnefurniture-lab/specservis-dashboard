@@ -177,7 +177,6 @@ function decimal(value: string | number | null | Date) {
 }
 
 export async function loadConfidentialTurnover(): Promise<ConfidentialTurnoverDataset | null> {
-  await ensureConfidentialTurnoverSchema();
   const sql = getAnalyticsSql();
   if (!sql) return null;
   const sources = await sql`

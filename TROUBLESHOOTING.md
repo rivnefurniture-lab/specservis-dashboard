@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## Finance waits for SharePoint and Prozorro before it can render
+
+- **Error:** `/?workspace=finance` spends many seconds on «Збираємо дані · SharePoint і Prozorro», then shows a second financial loader.
+- **Cause:** The root client always fetched `/api/dashboard` and refused to render its shell until the complete tender payload arrived. Only after that request did it read `workspace=finance` and start the confidential turnover request, creating an unrelated sequential waterfall.
+- **Fix:** Resolve the authorized workspace in the server page. Render the lightweight finance shell and load its active turnover dataset directly for `workspace=finance`; load SharePoint, Prozorro, market, and competitor data only on the tender route.
+
 ## Reconnecting a Vercel integration returns HTTP 500
 
 - **Error:** `Connect integration resource to project` returns HTTP 500 while the storage resource still lists the project, but its `environmentVariables` array is empty.
