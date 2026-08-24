@@ -19,12 +19,12 @@ import type { ConfidentialTurnoverDataset } from "@/lib/confidential-turnover";
 import type { DashboardViewer } from "@/lib/dashboard-data";
 
 const financeNavigation = [
-  { id: "finance-overview", label: "Огляд", hint: "Фінансовий пульс", marker: "ОПЕРАЦІЙНИЙ ОБОРОТ ГРУПИ", icon: LayoutDashboard },
-  { id: "finance-focus", label: "Фокус власника", hint: "Ризики й дії", marker: "РІШЕННЯ ДЛЯ ВЛАСНИКА", icon: CircleAlert },
-  { id: "finance-dynamics", label: "Динаміка", hint: "Зміни та джерела", marker: "ЩО ДАЛО ЗМІНУ", icon: BarChart3 },
-  { id: "finance-team", label: "Команда", hint: "FTE та продуктивність", marker: "ЕКОНОМІКА КОМАНДИ", icon: UsersRound },
-  { id: "finance-history", label: "Історія", hint: "Рік до року", marker: "ЧИ ВИКОНУЄМО ТЕМП", icon: History },
-  { id: "finance-audit", label: "Місячний аудит", hint: "Фільтри й аномалії", marker: "ДЕТАЛІ ТА ПЕРЕВІРКА", icon: ListFilter },
+  { id: "finance-overview", label: "Огляд", hint: "Основні показники", marker: "ОСНОВНІ ПОКАЗНИКИ", icon: LayoutDashboard },
+  { id: "finance-focus", label: "Контроль", hint: "Факти для перевірки", marker: "ФАКТИ ДЛЯ ПЕРЕВІРКИ", icon: CircleAlert },
+  { id: "finance-dynamics", label: "Динаміка", hint: "Зміни та джерела", marker: "ЗМІНА ДО ПОПЕРЕДНЬОГО РОКУ", icon: BarChart3 },
+  { id: "finance-team", label: "Команда", hint: "FTE, оборот і ФОП", marker: "ЕКОНОМІКА КОМАНДИ", icon: UsersRound },
+  { id: "finance-history", label: "Історія", hint: "Однакові періоди", marker: "ДИНАМІКА ЗА РОКАМИ", icon: History },
+  { id: "finance-audit", label: "Місячні дані", hint: "Фільтри й сортування", marker: "ДЕТАЛІ ТА ПЕРЕВІРКА", icon: ListFilter },
 ] as const;
 
 type FinanceSection = (typeof financeNavigation)[number]["id"];
