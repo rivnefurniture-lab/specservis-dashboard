@@ -34,11 +34,10 @@ import {
   type DashboardRole,
   type RoleWorkTarget,
 } from "@/components/role-modules";
-import { MarketRefresh } from "@/components/market-refresh";
 import { TenderDrawer, type TenderSelection } from "@/components/tender-drawer";
 import type { DashboardPayload } from "@/lib/dashboard-data";
 import { date, dateTime, integer, money } from "@/lib/dashboard-data";
-import type { Direction, InternalTender, MarketCoveragePoint, MarketCoverageSummary, MarketCoverageTenderView } from "@/lib/types";
+import type { Direction, InternalTender, MarketCoveragePoint, MarketCoverageSummary } from "@/lib/types";
 
 type View = "overview" | "work" | "tender-workspace" | "projects" | "market" | "competitors";
 type Workspace = "tenders" | "finance";
@@ -46,12 +45,12 @@ type Period = "day" | "week" | "month" | "all";
 type WorkFilter = RoleWorkTarget;
 type DirectionScope = "all" | Exclude<Direction, "Інше">;
 type WorkSort = "deadline" | "value-desc" | "value-asc" | "status";
-type MarketSort = "amount-desc" | "deadline" | "newest";
-type MarketVisibility = "all" | "missed" | "seen" | "review" | "untracked" | "outside" | "unknown";
-type TrendDatum = MarketCoverageSummary & { label: string };
 
 const ProjectsView = dynamic(() => import("@/components/projects-view").then((module) => module.ProjectsView));
 const AnalyticsV2View = dynamic(() => import("@/components/analytics-v2-view").then((module) => module.AnalyticsV2View));
+const MonitoringV2View = dynamic(() => import("@/components/monitoring-v2-view").then((module) => module.MonitoringV2View), {
+  loading: () => <Loading />,
+});
 const TenderWorkspace = dynamic(() => import("@/components/tender-workspace").then((module) => module.TenderWorkspace), {
   loading: () => <Loading />,
 });
@@ -145,36 +144,6 @@ const workLegend = [
   { term: "Увесь файл", text: "Усі 1 273 записи Excel, включно із закритими: відмови, програші, скасовані закупівлі." },
 ];
 
-const marketLegend = [
-  { term: "Є в SharePoint", text: "Закупівлю знайдено у вашому Excel за замовником, назвою та сумою." },
-  { term: "Не знайдено в Excel", text: "Релевантне капбудівництво в Києві та області, якого у файлі немає. Єдиний стан, який справді означає «пропустили»." },
-  { term: "Уточнити відповідність", text: "ДК-код або предмет закупівлі ще не підтверджені історією рішень команди. Не пропущено — треба глянути очима." },
-  { term: "Немає внутрішнього Excel", text: "Сервіс і кондиціонування: файлів цих напрямків ще немає, тож звіряти нема з чим." },
-  { term: "Поза цільовою територією", text: "Роботи в іншій області. Не видаляємо — просто рахуємо окремо, бо за KPI це не ваша територія." },
-  { term: "Уточнити місце робіт", text: "У закупівлі не вказано адресу виконання. Адресу замовника як доказ не використовуємо: київський замовник часто будує в іншій області." },
-];
-
-function sumCoverage(points: Array<MarketCoverageSummary>) {
-  return points.reduce((total, point) => ({
-    market: total.market + point.market,
-    seen: total.seen + point.seen,
-    missed: total.missed + point.missed,
-    needsReview: total.needsReview + point.needsReview,
-    untracked: total.untracked + point.untracked,
-    unavailable: total.unavailable + point.unavailable,
-    outsideScope: total.outsideScope + point.outsideScope,
-    unknownTerritory: total.unknownTerritory + point.unknownTerritory,
-    marketValue: total.marketValue + point.marketValue,
-    seenValue: total.seenValue + point.seenValue,
-    missedValue: total.missedValue + point.missedValue,
-    needsReviewValue: total.needsReviewValue + point.needsReviewValue,
-    untrackedValue: total.untrackedValue + point.untrackedValue,
-    unavailableValue: total.unavailableValue + point.unavailableValue,
-    outsideScopeValue: total.outsideScopeValue + point.outsideScopeValue,
-    unknownTerritoryValue: total.unknownTerritoryValue + point.unknownTerritoryValue,
-  }), { market: 0, seen: 0, missed: 0, needsReview: 0, untracked: 0, unavailable: 0, outsideScope: 0, unknownTerritory: 0, marketValue: 0, seenValue: 0, missedValue: 0, needsReviewValue: 0, untrackedValue: 0, unavailableValue: 0, outsideScopeValue: 0, unknownTerritoryValue: 0 });
-}
-
 const emptyCoverageSummary: MarketCoverageSummary = {
   market: 0,
   seen: 0,
@@ -196,22 +165,6 @@ const emptyCoverageSummary: MarketCoverageSummary = {
 
 function coverageForDirection(point: MarketCoveragePoint, direction: DirectionScope): MarketCoverageSummary {
   return direction === "all" ? point : point.byDirection[direction];
-}
-
-function shortDate(value: string) {
-  return new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short" }).format(new Date(`${value}T12:00:00Z`));
-}
-
-function compactTrend(points: MarketCoveragePoint[], period: Period) {
-  if (period === "day") return points.slice(-2).map((point, index, rows) => ({ label: index === rows.length - 1 ? "Сьогодні" : "Учора", ...sumCoverage([point]) }));
-  if (period === "week") return points.slice(-7).map((point) => ({ label: shortDate(point.date), ...sumCoverage([point]) }));
-  const result: TrendDatum[] = [];
-  const month = period === "all" ? points : points.slice(-31);
-  for (let index = 0; index < month.length; index += 7) {
-    const chunk = month.slice(index, index + 7);
-    result.push({ label: `${shortDate(chunk[0].date)}–${shortDate(chunk.at(-1)?.date ?? chunk[0].date)}`, ...sumCoverage(chunk) });
-  }
-  return result;
 }
 
 function daysUntil(deadline: string, today: string) {
@@ -258,32 +211,6 @@ function PeriodSwitch({ value, onChange, caption }: { value: Period; onChange: (
   );
 }
 
-/**
- * Пояснення просто в інтерфейсі. Кожна цифра, яку легко переплутати з іншою,
- * має сказати про себе сама — без інструкції збоку.
- */
-function MarketTrend({ points, period }: { points: MarketCoveragePoint[]; period: Period }) {
-  const rows = compactTrend(points, period);
-  const maximum = Math.max(...rows.map((row) => row.seen + row.missed), 1);
-  return (
-    <div className="owner-market-trend">
-      <div className="owner-trend-legend"><span><i /> Команда вже бачить</span><span><i /> Відкриті, але не в роботі</span></div>
-      {rows.map((row) => (
-        <div className="owner-trend-row" key={row.label}>
-          <span>{row.label}</span>
-          <div className="owner-trend-track">
-            <div className="owner-trend-fill" style={{ width: `${Math.max(((row.seen + row.missed) / maximum) * 100, row.seen + row.missed ? 6 : 0)}%` }}>
-              {row.seen ? <button type="button" className="owner-trend-segment seen" style={{ width: `${(row.seen / (row.seen + row.missed)) * 100}%` }} aria-label={`Команда бачить: ${integer(row.seen)}, ${money(row.seenValue)}`}><span className="owner-trend-tip"><small>Команда бачить</small><b>{integer(row.seen)}</b><em>{money(row.seenValue)}</em></span></button> : null}
-              {row.missed ? <button type="button" className="owner-trend-segment missed" style={{ width: `${(row.missed / (row.seen + row.missed)) * 100}%` }} aria-label={`Не в роботі: ${integer(row.missed)}, ${money(row.missedValue)}`}><span className="owner-trend-tip"><small>Не в роботі</small><b>{integer(row.missed)}</b><em>{money(row.missedValue)}</em></span></button> : null}
-            </div>
-          </div>
-          <b>{row.seen + row.missed}</b>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function WorkRow({ tender, today, onOpen }: { tender: InternalTender; today: string; onOpen: () => void }) {
   const submission = submissionState(tender, today);
   return (
@@ -295,30 +222,6 @@ function WorkRow({ tender, today, onOpen }: { tender: InternalTender; today: str
       </span>
       <strong>{tender.value ? money(tender.value) : "Сума не вказана"}</strong>
     </button>
-  );
-}
-
-function MarketCard({ tender }: { tender: MarketCoverageTenderView }) {
-  const status = tender.territoryStatus === "outside"
-    ? { className: "outside", label: "Поза цільовою територією" }
-    : tender.territoryStatus === "unknown"
-      ? { className: "unknown", label: "Уточнити місце робіт" }
-      : tender.coverageStatus === "untracked"
-        ? { className: "untracked", label: "Немає внутрішнього Excel" }
-        : tender.coverageStatus === "review"
-          ? { className: "review", label: "Уточнити відповідність" }
-          : tender.coverageStatus === "seen"
-        ? { className: "seen", label: "Є в SharePoint" }
-        : { className: "missed", label: "Не знайдено в Excel" };
-  return (
-    <a className="owner-market-card" href={tender.prozorroUrl || `https://prozorro.gov.ua/tender/${tender.cdbNumber}`} target="_blank" rel="noreferrer">
-      <header><span className={status.className}><i />{status.label}</span><b>Відкрити</b></header>
-      <h3>{tender.title}</h3>
-      <p>{tender.buyer}</p>
-      <p className="owner-market-location">{tender.territoryLabel}</p>
-      <p className="owner-market-note">{tender.coverageNote}</p>
-      <footer><strong>{tender.amount ? money(tender.amount) : "Сума не вказана"}</strong><small>{tender.deadline ? `до ${date(tender.deadline)}` : "без дедлайну"}</small></footer>
-    </a>
   );
 }
 
@@ -338,20 +241,14 @@ export function OwnerDashboard() {
   const [period, setPeriod] = useState<Period>("week");
   // Кожна сторінка тримає свій період: вони фільтрують різні речі.
   const [workPeriod, setWorkPeriod] = useState<Period>("all");
-  // Списки нікуди не зрізаються мовчки: показуємо порцію і завжди пишемо, скільки всього.
-  const [marketLimit, setMarketLimit] = useState(60);
   const [workLimit, setWorkLimit] = useState(80);
   const [appliedListKey, setAppliedListKey] = useState("");
   const [workFilter, setWorkFilter] = useState<WorkFilter>("active");
   const [workSort, setWorkSort] = useState<WorkSort>("deadline");
   const [workQuery, setWorkQuery] = useState("");
-  // null = фільтр ще не обирали вручну, тож стартовий стан залежить від того,
-  // чи є для цього напрямку внутрішній файл, з яким взагалі є що порівнювати.
-  const [marketVisibility, setMarketVisibility] = useState<MarketVisibility | null>(null);
-  const [marketSort, setMarketSort] = useState<MarketSort>("amount-desc");
-  const [marketQuery, setMarketQuery] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [selected, setSelected] = useState<TenderSelection | null>(null);
+  const [monitoringTotal, setMonitoringTotal] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -423,13 +320,9 @@ export function OwnerDashboard() {
   // список означає «немає джерела», а не «немає роботи», і це треба сказати вголос.
   const hasRegistry = directionScope === "all" || snapshot.registry.direction === directionScope;
   const scopeDirection = directionScope === "all" ? snapshot.registry.direction : directionLabels[directionScope];
-  // Без внутрішнього файлу «підтверджено не в Excel» завжди порожнє, тому
-  // стартовим фільтром стає той стан, у якому для цього напрямку є дані.
-  const visibility: MarketVisibility = marketVisibility ?? (hasRegistry ? "missed" : "untracked");
-  const listKey = `${directionScope}|${visibility}|${period}|${marketQuery}|${workFilter}|${workPeriod}|${workQuery}`;
+  const listKey = `${directionScope}|${workFilter}|${workPeriod}|${workQuery}`;
   if (appliedListKey !== listKey) {
     setAppliedListKey(listKey);
-    if (marketLimit !== 60) setMarketLimit(60);
     if (workLimit !== 80) setWorkLimit(80);
   }
   const scopedTenders = directionScope === "all"
@@ -502,8 +395,6 @@ export function OwnerDashboard() {
   const firstMarketDate = rawPeriodPoints[0]?.date ?? coverage.endDate;
   const rawPeriodMarket = scopedCoverageTenders.filter((tender) => tender.publishedAt.slice(0, 10) >= firstMarketDate);
   const periodMarket = rawPeriodMarket.filter((tender) => tender.actionable);
-  const periodPoints = rawPeriodPoints;
-  const periodSummary = sumCoverage(periodPoints);
   const marketNeedReview = periodMarket.filter((tender) => (tender.territoryStatus === "target" || tender.territoryStatus === "nationwide") && tender.coverageStatus === "missed").sort((left, right) => right.amount - left.amount);
   const workNeedle = workQuery.trim().toLowerCase();
   const allTenders = [...scopedTenders];
@@ -525,21 +416,6 @@ export function OwnerDashboard() {
         : workSort === "status"
           ? left.status.localeCompare(right.status, "uk")
           : (left.deadline ?? "9999").localeCompare(right.deadline ?? "9999") || right.value - left.value);
-  const marketNeedle = marketQuery.trim().toLowerCase();
-  const filteredMarket = periodMarket
-    .filter((tender) => visibility === "all"
-      || (visibility === "seen" && (tender.territoryStatus === "target" || tender.territoryStatus === "nationwide") && tender.seenByTeam)
-      || (visibility === "missed" && (tender.territoryStatus === "target" || tender.territoryStatus === "nationwide") && tender.coverageStatus === "missed")
-      || (visibility === "review" && (tender.territoryStatus === "target" || tender.territoryStatus === "nationwide") && tender.coverageStatus === "review")
-      || (visibility === "untracked" && (tender.territoryStatus === "target" || tender.territoryStatus === "nationwide") && tender.coverageStatus === "untracked")
-      || (visibility === "outside" && tender.territoryStatus === "outside")
-      || (visibility === "unknown" && tender.territoryStatus === "unknown"))
-    .filter((tender) => !marketNeedle || `${tender.title} ${tender.buyer} ${tender.cdbNumber} ${tender.territoryLabel}`.toLowerCase().includes(marketNeedle))
-    .sort((left, right) => marketSort === "deadline"
-      ? (left.deadline ?? "9999").localeCompare(right.deadline ?? "9999") || right.amount - left.amount
-      : marketSort === "newest"
-        ? right.publishedAt.localeCompare(left.publishedAt) || right.amount - left.amount
-        : right.amount - left.amount);
 
   const navigate = (target: View) => {
     if (!isViewAllowed(role, target, viewer.tenderWorkspaceAccess)) return;
@@ -606,7 +482,7 @@ export function OwnerDashboard() {
             return <button type="button" key={item.id} className={financeSection === item.id ? "active" : ""} onClick={() => navigateFinance(item.id)}><Icon size={18} /><span><b>{item.label}</b><small>{item.hint}</small></span></button>;
           }) : roleNavigation.map((item) => {
             const Icon = item.icon;
-            const count = item.id === "work" ? activeTenders.length : item.id === "market" ? marketNeedReview.length : null;
+            const count = item.id === "work" ? activeTenders.length : item.id === "market" ? monitoringTotal ?? marketNeedReview.length : null;
             return <button type="button" key={item.id} className={workspace === "tenders" && activeView === item.id ? "active" : ""} onClick={() => navigate(item.id)}><Icon size={18} /><span><b>{item.label}</b><small>{item.hint}</small></span>{count !== null ? <em>{count}</em> : null}</button>;
           })}
         </nav>
@@ -634,7 +510,7 @@ export function OwnerDashboard() {
           <div className="owner-topbar-actions">
             {workspace === "tenders" ? <label className="owner-direction-select">
               <span>Напрямок</span>
-              <div><select value={directionScope} onChange={(event) => { setDirectionScope(event.target.value as DirectionScope); setMarketVisibility(null); }} disabled={viewer.role !== "owner"}>
+              <div><select value={directionScope} onChange={(event) => setDirectionScope(event.target.value as DirectionScope)} disabled={viewer.role !== "owner"}>
                 {viewer.role === "owner" ? <option value="all">Уся компанія</option> : null}
                 {viewer.availableDirections.map((direction) => <option key={direction} value={direction}>{directionLabels[direction]}</option>)}
               </select><ChevronDown size={15} /></div>
@@ -711,31 +587,7 @@ export function OwnerDashboard() {
 
         {workspace === "tenders" && activeView === "market" ? (
           <div className="owner-stack">
-            <section className="owner-page-head owner-market-head"><div><span>PROZORRO ЧЕРЕЗ SMARTTENDER</span><h1>Ринок по всій Україні</h1><p>Будівництво та сервіс: цільовий KPI лише Київ і область. Кондиціонування: вся Україна.</p></div><PeriodSwitch value={period} onChange={setPeriod} caption="Опубліковано в Prozorro за:" /></section>
-            {role === "owner" ? <MarketRefresh generatedAt={coverage.generatedAt} onDone={() => void load()} /> : null}
-            <section className="owner-market-summary">
-              <div><span>Увесь релевантний ринок <Hint text="Усі закупівлі профілю Спецсервісу за період — по всій Україні, разом із тими, що поза вашою територією." /></span><strong>{integer(periodSummary.market)}</strong><small>{money(periodSummary.marketValue)}</small></div>
-              <div className="seen"><span>Цільові · команда бачить <Hint text="Закупівлі на вашій території, які вже є у внутрішньому Excel." /></span><strong>{integer(periodSummary.seen)}</strong><small>{money(periodSummary.seenValue)}</small></div>
-              <div className="missed"><span>Підтверджено · не в Excel <Hint text="Придатні закупівлі на вашій території, яких у файлі немає. Саме вони зменшують покриття." /></span><strong>{integer(periodSummary.missed)}</strong><small>{money(periodSummary.missedValue)}</small></div>
-              <div className="review"><span>Потрібна перевірка <Hint text="ДК-код чи предмет ще не підтверджені історією рішень команди — потрібне рішення людини." /></span><strong>{integer(periodSummary.needsReview)}</strong><small>{money(periodSummary.needsReviewValue)}</small></div>
-              <div className="untracked"><span>Немає внутрішнього джерела <Hint text="Сервіс і кондиціонування: файлів цих напрямків ще немає, тож звіряти нема з чим." /></span><strong>{integer(periodSummary.untracked)}</strong><small>{money(periodSummary.untrackedValue)}</small></div>
-              <div className="outside"><span>Поза цільовою територією <Hint text="Роботи в іншій області: за KPI не рахуються, але лишаються видимими." /></span><strong>{integer(periodSummary.outsideScope)}</strong><small>{money(periodSummary.outsideScopeValue)}</small></div>
-              <div className="unknown"><span>Уточнити місце робіт <Hint text="Адреси виконання немає. Адресу замовника як доказ не використовуємо." /></span><strong>{integer(periodSummary.unknownTerritory)}</strong><small>{money(periodSummary.unknownTerritoryValue)}</small></div>
-            </section>
-            <section className="owner-section owner-trend-section"><header><div><span>ДИНАМІКА</span><h2>{period === "day" ? "Сьогодні проти вчора" : period === "week" ? "Щодня за останній тиждень" : "Щотижня за останній місяць"}</h2></div></header><MarketTrend points={periodPoints} period={period} /></section>
-            <section className="owner-market-toolbar owner-market-controls">
-              <div className="owner-visibility-tabs"><button type="button" className={visibility === "missed" ? "active" : ""} onClick={() => setMarketVisibility("missed")}>Підтверджено не в Excel <b>{periodSummary.missed}</b></button><button type="button" className={visibility === "review" ? "active" : ""} onClick={() => setMarketVisibility("review")}>Перевірити <b>{periodSummary.needsReview}</b></button><button type="button" className={visibility === "untracked" ? "active" : ""} onClick={() => setMarketVisibility("untracked")}>Без внутрішнього джерела <b>{periodSummary.untracked}</b></button><button type="button" className={visibility === "seen" ? "active" : ""} onClick={() => setMarketVisibility("seen")}>Команда бачить <b>{periodSummary.seen}</b></button><button type="button" className={visibility === "outside" ? "active" : ""} onClick={() => setMarketVisibility("outside")}>Інші області <b>{periodSummary.outsideScope}</b></button><button type="button" className={visibility === "unknown" ? "active" : ""} onClick={() => setMarketVisibility("unknown")}>Уточнити місце <b>{periodSummary.unknownTerritory}</b></button><button type="button" className={visibility === "all" ? "active" : ""} onClick={() => setMarketVisibility("all")}>Усі відкриті <b>{periodSummary.seen + periodSummary.missed + periodSummary.needsReview + periodSummary.untracked + periodSummary.outsideScope + periodSummary.unknownTerritory}</b></button></div>
-              <div className="owner-filter-actions"><label className="owner-search"><Search size={17} /><input aria-label="Пошук тендерів Prozorro" value={marketQuery} onChange={(event) => setMarketQuery(event.target.value)} placeholder="Назва, замовник або номер" />{marketQuery ? <button type="button" aria-label="Очистити" onClick={() => setMarketQuery("")}><X size={15} /></button> : null}</label><label className="owner-sort"><span>Сортування</span><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as MarketSort)}><option value="amount-desc">Найбільша сума</option><option value="deadline">Найближчий дедлайн</option><option value="newest">Найновіші</option></select><ChevronDown size={14} /></label></div>
-            </section>
-            <Legend title="Що означає кожен статус" items={coverage.retention ? [...marketLegend, { term: "Повнота зрізу", text: coverage.retention.note }] : marketLegend} />
-            <section className="owner-market-grid owner-market-page">{filteredMarket.slice(0, marketLimit).map((tender) => <MarketCard key={tender.id} tender={tender} />)}</section>
-            {!filteredMarket.length ? <div className="owner-empty"><b>За цими фільтрами тендерів немає</b><span>Змініть статус, період або пошуковий запит.</span></div> : null}
-            {filteredMarket.length ? (
-              <div className="owner-load-more">
-                <span>Показано {integer(Math.min(marketLimit, filteredMarket.length))} із {integer(filteredMarket.length)} за цим фільтром. Підсумки вгорі пораховані за повним ринком.</span>
-                {filteredMarket.length > marketLimit ? <button type="button" onClick={() => setMarketLimit((value) => value + 120)}>Показати ще {Math.min(120, filteredMarket.length - marketLimit)}</button> : null}
-              </div>
-            ) : null}
+            <MonitoringV2View initialDirection={directionScope === "all" ? null : directionScope} canManage={role !== "employee"} canConfigureIntegrations={role === "owner"} onTotalChange={setMonitoringTotal} />
           </div>
         ) : null}
 

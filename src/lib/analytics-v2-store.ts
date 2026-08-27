@@ -58,19 +58,26 @@ async function procurementRows(lens: AnalyticsDateLens, filters: AnalyticsV2Filt
   const from = filters.from || null;
   const to = filters.to || null;
   const directions = filters.directions?.length ? filters.directions : null;
+  const includeDescription = Boolean(filters.subjectQuery);
+  const includeDeliveryAddress = Boolean(filters.addressQuery);
   if (lens === "award") {
     return await sql`
-      select distinct p.id, p.tender_id, p.prozorro_url, p.title, p.description, p.published_at,
+      select distinct p.id, p.tender_id, p.prozorro_url, p.title,
+        case when ${includeDescription} then p.description else null end as description, p.published_at,
         p.buyer_id, buyer.legal_name as buyer_name, p.procurement_method, p.procurement_method_type,
         p.main_category, p.status, p.department, p.cpv_code, p.expected_amount, p.expected_currency,
-        (select max(i.delivery_region) from analytics_items i where i.procurement_id = p.id) as region,
-        (select string_agg(distinct i.delivery_text, ' | ') from analytics_items i where i.procurement_id = p.id) as delivery_address,
+        item.region, item.delivery_address,
         own.status as our_status
       from analytics_procurements p
       join analytics_dataset_procurements dp on dp.procurement_id = p.id and dp.dataset_id = ${datasetId}
       join analytics_lots l on l.procurement_id = p.id
       join analytics_awards a on a.lot_id = l.id
       left join analytics_organizations buyer on buyer.id = p.buyer_id
+      left join lateral (
+        select max(i.delivery_region) as region,
+          case when ${includeDeliveryAddress} then string_agg(distinct i.delivery_text, ' | ') else null end as delivery_address
+        from analytics_items i where i.procurement_id = p.id
+      ) item on true
       left join analytics_our_status own on own.procurement_id = p.id
       where (${from}::date is null or a.decision_at >= ${from}::date)
         and (${to}::date is null or a.decision_at < ${to}::date + interval '1 day')
@@ -79,16 +86,21 @@ async function procurementRows(lens: AnalyticsDateLens, filters: AnalyticsV2Filt
   }
   if (lens === "contract") {
     return await sql`
-      select distinct p.id, p.tender_id, p.prozorro_url, p.title, p.description, p.published_at,
+      select distinct p.id, p.tender_id, p.prozorro_url, p.title,
+        case when ${includeDescription} then p.description else null end as description, p.published_at,
         p.buyer_id, buyer.legal_name as buyer_name, p.procurement_method, p.procurement_method_type,
         p.main_category, p.status, p.department, p.cpv_code, p.expected_amount, p.expected_currency,
-        (select max(i.delivery_region) from analytics_items i where i.procurement_id = p.id) as region,
-        (select string_agg(distinct i.delivery_text, ' | ') from analytics_items i where i.procurement_id = p.id) as delivery_address,
+        item.region, item.delivery_address,
         own.status as our_status
       from analytics_procurements p
       join analytics_dataset_procurements dp on dp.procurement_id = p.id and dp.dataset_id = ${datasetId}
       join analytics_contracts c on c.procurement_id = p.id
       left join analytics_organizations buyer on buyer.id = p.buyer_id
+      left join lateral (
+        select max(i.delivery_region) as region,
+          case when ${includeDeliveryAddress} then string_agg(distinct i.delivery_text, ' | ') else null end as delivery_address
+        from analytics_items i where i.procurement_id = p.id
+      ) item on true
       left join analytics_our_status own on own.procurement_id = p.id
       where (${from}::date is null or c.signed_at >= ${from}::date)
         and (${to}::date is null or c.signed_at < ${to}::date + interval '1 day')
@@ -96,15 +108,20 @@ async function procurementRows(lens: AnalyticsDateLens, filters: AnalyticsV2Filt
     ` as ProcurementRow[];
   }
   return await sql`
-    select p.id, p.tender_id, p.prozorro_url, p.title, p.description, p.published_at,
+    select p.id, p.tender_id, p.prozorro_url, p.title,
+      case when ${includeDescription} then p.description else null end as description, p.published_at,
       p.buyer_id, buyer.legal_name as buyer_name, p.procurement_method, p.procurement_method_type,
       p.main_category, p.status, p.department, p.cpv_code, p.expected_amount, p.expected_currency,
-      (select max(i.delivery_region) from analytics_items i where i.procurement_id = p.id) as region,
-      (select string_agg(distinct i.delivery_text, ' | ') from analytics_items i where i.procurement_id = p.id) as delivery_address,
+      item.region, item.delivery_address,
       own.status as our_status
     from analytics_procurements p
     join analytics_dataset_procurements dp on dp.procurement_id = p.id and dp.dataset_id = ${datasetId}
     left join analytics_organizations buyer on buyer.id = p.buyer_id
+    left join lateral (
+      select max(i.delivery_region) as region,
+        case when ${includeDeliveryAddress} then string_agg(distinct i.delivery_text, ' | ') else null end as delivery_address
+      from analytics_items i where i.procurement_id = p.id
+    ) item on true
     left join analytics_our_status own on own.procurement_id = p.id
     where (${from}::date is null or p.published_at >= ${from}::date)
       and (${to}::date is null or p.published_at < ${to}::date + interval '1 day')
@@ -116,9 +133,20 @@ export async function loadAnalyticsV2Input(filters: AnalyticsV2Filters): Promise
   input: AnalyticsV2Input;
   generatedAt: string;
   sourceName: string;
+  timings: {
+    datasetMs: number;
+    procurementsMs: number;
+    detailsMs: number;
+    lotsMs: number;
+    bidsMs: number;
+    awardsMs: number;
+    contractsMs: number;
+    mappingMs: number;
+  };
 } | null> {
   const sql = getAnalyticsSql();
   if (!sql) return null;
+  const datasetStartedAt = performance.now();
   const datasetRows = filters.datasetId
     ? await sql`
         select id, generated_at, source_name from analytics_datasets
@@ -130,29 +158,50 @@ export async function loadAnalyticsV2Input(filters: AnalyticsV2Filters): Promise
         where scope_mode = ${filters.scope ?? "monitoring"} and status = 'ready'
         order by generated_at desc limit 1
       ` as unknown as DatasetRow[];
+  const datasetMs = performance.now() - datasetStartedAt;
   const dataset = datasetRows[0];
   if (!dataset) return null;
+  const procurementsStartedAt = performance.now();
   const rows = await procurementRows(filters.dateLens ?? "publication", filters, dataset.id);
+  const procurementsMs = performance.now() - procurementsStartedAt;
   const empty: AnalyticsV2Input = { tenders: [], lots: [], bids: [], awards: [], contracts: [] };
-  if (!rows?.length) return { input: empty, generatedAt: requiredDate(dataset.generated_at), sourceName: dataset.source_name };
+  if (!rows?.length) return {
+    input: empty,
+    generatedAt: requiredDate(dataset.generated_at),
+    sourceName: dataset.source_name,
+    timings: {
+      datasetMs, procurementsMs, detailsMs: 0,
+      lotsMs: 0, bidsMs: 0, awardsMs: 0, contractsMs: 0, mappingMs: 0,
+    },
+  };
   const procurementIds = rows.map((row) => row.id);
+  const detailTimings = { lotsMs: 0, bidsMs: 0, awardsMs: 0, contractsMs: 0 };
+  const detail = async <T>(name: keyof typeof detailTimings, query: PromiseLike<T>) => {
+    const startedAt = performance.now();
+    const result = await query;
+    detailTimings[name] = performance.now() - startedAt;
+    return result;
+  };
+  const detailsStartedAt = performance.now();
   const [lotRecords, bidRecords, awardRecords, contractRecords] = await Promise.all([
-    sql`select id, procurement_id, title, expected_amount, expected_currency from analytics_lots where procurement_id = any(${procurementIds}::text[])`,
-    sql`select b.id, b.lot_id, b.supplier_id, supplier.legal_name as supplier_name, b.status, b.value_at, b.latest_amount, b.currency
+    detail("lotsMs", sql`select id, procurement_id, title, expected_amount, expected_currency from analytics_lots where procurement_id = any(${procurementIds}::text[])`),
+    detail("bidsMs", sql`select b.id, b.lot_id, b.supplier_id, supplier.legal_name as supplier_name, b.status, b.value_at, b.latest_amount, b.currency
         from analytics_bids b join analytics_organizations supplier on supplier.id = b.supplier_id
-        join analytics_lots l on l.id = b.lot_id where l.procurement_id = any(${procurementIds}::text[]) and b.is_published = true`,
-    sql`select a.id, a.lot_id, a.bid_id, a.supplier_id, supplier.legal_name as supplier_name, a.status,
+        where b.procurement_id = any(${procurementIds}::text[]) and b.is_published = true`),
+    detail("awardsMs", sql`select a.id, a.lot_id, a.bid_id, a.supplier_id, supplier.legal_name as supplier_name, a.status,
         a.decision_at, a.amount, a.currency, a.reason_title, a.reason_description
         from analytics_awards a join analytics_organizations supplier on supplier.id = a.supplier_id
-        where a.procurement_id = any(${procurementIds}::text[])`,
-    sql`select c.id, c.procurement_id, c.lot_id, c.supplier_id, supplier.legal_name as supplier_name,
+        where a.procurement_id = any(${procurementIds}::text[])`),
+    detail("contractsMs", sql`select c.id, c.procurement_id, c.lot_id, c.supplier_id, supplier.legal_name as supplier_name,
         c.buyer_id, buyer.legal_name as buyer_name, c.status, c.contract_number, c.signed_at, c.source_modified_at,
         exists(select 1 from analytics_contract_changes ch where ch.contract_id = c.id) as has_changes,
         c.completion_class, c.initial_amount, c.current_amount, c.amount_paid, c.currency
         from analytics_contracts c join analytics_organizations supplier on supplier.id = c.supplier_id
         left join analytics_organizations buyer on buyer.id = c.buyer_id
-        where c.procurement_id = any(${procurementIds}::text[])`,
+        where c.procurement_id = any(${procurementIds}::text[])`),
   ]);
+  const detailsMs = performance.now() - detailsStartedAt;
+  const mappingStartedAt = performance.now();
   const lotRows = lotRecords as unknown as LotRow[];
   const bidRows = bidRecords as unknown as BidRow[];
   const awardRows = awardRecords as unknown as AwardRow[];
@@ -229,5 +278,16 @@ export async function loadAnalyticsV2Input(filters: AnalyticsV2Filters): Promise
       currency: row.currency ?? "UNKNOWN",
     })),
   };
-  return { input, generatedAt: requiredDate(dataset.generated_at), sourceName: dataset.source_name };
+  return {
+    input,
+    generatedAt: requiredDate(dataset.generated_at),
+    sourceName: dataset.source_name,
+    timings: {
+      datasetMs,
+      procurementsMs,
+      detailsMs,
+      ...detailTimings,
+      mappingMs: performance.now() - mappingStartedAt,
+    },
+  };
 }

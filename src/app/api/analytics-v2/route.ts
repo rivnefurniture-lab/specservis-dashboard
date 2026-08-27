@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getCache } from "@vercel/functions";
 import { sessionAccount, sessionCookie } from "@/lib/auth";
 import { buildAnalyticsV2, type AnalyticsDateLens, type AnalyticsV2Filters } from "@/lib/analytics-v2-engine";
 import { ensureExpandedAnalyticsRequest, isExpandedDiscovery } from "@/lib/analytics-v2-expanded";
@@ -13,6 +14,34 @@ export const maxDuration = 60;
 
 const dateLenses = new Set<AnalyticsDateLens>(["publication", "award", "contract"]);
 const directions = new Set(["Капбудівництво", "Сервіс", "Кондиціонування"]);
+const RESPONSE_CACHE_TTL_SECONDS = 60;
+const RESPONSE_CACHE_PENDING_TTL_SECONDS = 15;
+const responseCache = getCache({ namespace: "analytics-v2-responses" });
+
+async function readResponseCache(key: string) {
+  try {
+    return await responseCache.get(key);
+  } catch (error) {
+    console.warn("[analytics-v2] cache read failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function writeResponseCache(key: string, payload: unknown, ttl: number) {
+  try {
+    await responseCache.set(key, payload, {
+      ttl,
+      tags: ["analytics-v2"],
+      name: "Analytics response",
+    });
+  } catch (error) {
+    console.warn("[analytics-v2] cache write failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 function isoDate(value: string | null) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) return null;
@@ -52,6 +81,7 @@ function defaultPeriod() {
 }
 
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   const cookieStore = await cookies();
   const account = sessionAccount(cookieStore.get(sessionCookie.name)?.value);
   if (!account) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -91,32 +121,66 @@ export async function GET(request: Request) {
     expectedAmountMax: optionalNumber(params.get("maxValue")),
     minParticipants: optionalNumber(params.get("minParticipants"), 0, 10_000),
     maxParticipants: optionalNumber(params.get("maxParticipants"), 0, 10_000),
+    lowestBidSupplierIds: values(params, "lowestSupplier", 30, 120),
+    lowestBidAmountMin: optionalNumber(params.get("minLowestBid")),
+    lowestBidAmountMax: optionalNumber(params.get("maxLowestBid")),
     lowestRejected: triState(params.get("lowestRejection")),
+    rejectionReasonQuery: params.get("rejectionReason")?.slice(0, 300).trim() || null,
     winnerSupplierIds: values(params, "winner", 30, 120),
+    awardAmountMin: optionalNumber(params.get("minAward")),
+    awardAmountMax: optionalNumber(params.get("maxAward")),
     contractPresence: triState(params.get("contract")),
+    originalContractAmountMin: optionalNumber(params.get("minOriginalContract")),
+    originalContractAmountMax: optionalNumber(params.get("maxOriginalContract")),
+    currentContractAmountMin: optionalNumber(params.get("minCurrentContract")),
+    currentContractAmountMax: optionalNumber(params.get("maxCurrentContract")),
+    completedContractAmountMin: optionalNumber(params.get("minCompletedAmount")),
+    completedContractAmountMax: optionalNumber(params.get("maxCompletedAmount")),
     paidPresence: triState(params.get("paid")),
     changesPresence: triState(params.get("changes")),
     ourStatuses: values(params, "ourStatus", 20, 120),
   };
-  if (filters.expectedAmountMin != null && filters.expectedAmountMax != null
-    && filters.expectedAmountMin > filters.expectedAmountMax) {
-    return NextResponse.json({ error: "Invalid value range" }, { status: 400 });
+  const ranges: Array<[number | null | undefined, number | null | undefined, string]> = [
+    [filters.expectedAmountMin, filters.expectedAmountMax, "expected value"],
+    [filters.minParticipants, filters.maxParticipants, "participant count"],
+    [filters.lowestBidAmountMin, filters.lowestBidAmountMax, "lowest bid"],
+    [filters.awardAmountMin, filters.awardAmountMax, "award amount"],
+    [filters.originalContractAmountMin, filters.originalContractAmountMax, "original contract amount"],
+    [filters.currentContractAmountMin, filters.currentContractAmountMax, "current contract amount"],
+    [filters.completedContractAmountMin, filters.completedContractAmountMax, "completed contract amount"],
+  ];
+  const invalidRange = ranges.find(([minimum, maximum]) => minimum != null && maximum != null && minimum > maximum);
+  if (invalidRange) {
+    return NextResponse.json({ error: `Invalid ${invalidRange[2]} range` }, { status: 400 });
   }
-  if (filters.minParticipants != null && filters.maxParticipants != null
-    && filters.minParticipants > filters.maxParticipants) {
-    return NextResponse.json({ error: "Invalid participant range" }, { status: 400 });
+  const canonicalParams = new URLSearchParams(params);
+  canonicalParams.sort();
+  const responseCacheKey = `${account.role}:${account.direction ?? "all"}:${canonicalParams.toString()}`;
+  const cachedPayload = await readResponseCache(responseCacheKey);
+  if (cachedPayload) {
+    const response = NextResponse.json(cachedPayload, { headers: { "Cache-Control": "private, no-store" } });
+    response.headers.set("Server-Timing", "cache;desc=hit;dur=0");
+    return response;
   }
 
+  const expansionStartedAt = performance.now();
   const expandedRequest = isExpandedDiscovery(filters)
     ? await ensureExpandedAnalyticsRequest(account.id, filters)
     : null;
+  const expansionMs = performance.now() - expansionStartedAt;
   if (expandedRequest) filters.datasetId = expandedRequest.dataset_id;
+  const storageStartedAt = performance.now();
   const stored = filters.scope === "expanded" && !expandedRequest ? null : await loadAnalyticsV2Input(filters);
+  const storageMs = performance.now() - storageStartedAt;
+  const syncStartedAt = performance.now();
   const monitoringSync = filters.scope === "monitoring" && stored ? await monitoringAnalyticsSyncSummary() : null;
+  const syncMs = performance.now() - syncStartedAt;
   const input = stored?.input ?? (filters.scope === "monitoring" ? legacyCompetitorAnalyticsInput() : {
     tenders: [], lots: [], bids: [], awards: [], contracts: [],
   });
+  const engineStartedAt = performance.now();
   const result = buildAnalyticsV2(input, filters);
+  const engineMs = performance.now() - engineStartedAt;
   const supplierLimit = boundedInteger(params.get("supplierLimit"), 100, 1, 500);
   const matrixLimit = boundedInteger(params.get("matrixLimit"), 200, 1, 1_000);
   const drilldownLimit = boundedInteger(params.get("drilldownLimit"), 300, 1, 1_000);
@@ -137,7 +201,7 @@ export async function GET(request: Request) {
       : monitoringPending
         ? [`Історичний backfill триває; у durable queue зараз ${monitoringSync?.queued ?? 0} закупівель. Уже завантажені факти доступні, але набір ще не позначено повним.`]
         : undefined;
-  return NextResponse.json({
+  const payload = {
     meta: {
       ...(stored
         ? { schemaVersion: "analytics-v2", generatedAt: stored.generatedAt, source: stored.sourceName }
@@ -174,8 +238,15 @@ export async function GET(request: Request) {
     },
     result: {
       ...result,
-      suppliers: result.suppliers.slice(0, supplierLimit),
-      buyers: result.buyers.slice(0, 500),
+      // The UI receives lightweight selector facets separately. Full party
+      // metrics are recalculated when a supplier or buyer is selected.
+      suppliers: [],
+      buyers: [],
+      mainBuyersByCount: result.mainBuyersByCount.slice(0, 1),
+      mainBuyersBySum: result.mainBuyersBySum.map((group) => ({
+        ...group,
+        buyers: group.buyers.slice(0, 1),
+      })),
       matrix: result.matrix.slice(0, matrixLimit),
       drilldown: result.drilldown.slice(0, drilldownLimit),
     },
@@ -189,5 +260,41 @@ export async function GET(request: Request) {
         drilldown: result.drilldown.length,
       },
     },
-  }, { headers: { "Cache-Control": "private, no-store" } });
+  };
+  await writeResponseCache(
+    responseCacheKey,
+    payload,
+    complete ? RESPONSE_CACHE_TTL_SECONDS : RESPONSE_CACHE_PENDING_TTL_SECONDS,
+  );
+  const serializationStartedAt = performance.now();
+  const response = NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
+  const serializationMs = performance.now() - serializationStartedAt;
+  response.headers.set("Server-Timing", [
+    `expansion;dur=${expansionMs.toFixed(1)}`,
+    `storage;dur=${storageMs.toFixed(1)}`,
+    ...(stored ? [
+      `dataset;dur=${stored.timings.datasetMs.toFixed(1)}`,
+      `procurements;dur=${stored.timings.procurementsMs.toFixed(1)}`,
+      `details;dur=${stored.timings.detailsMs.toFixed(1)}`,
+      `lots;dur=${stored.timings.lotsMs.toFixed(1)}`,
+      `bids;dur=${stored.timings.bidsMs.toFixed(1)}`,
+      `awards;dur=${stored.timings.awardsMs.toFixed(1)}`,
+      `contracts;dur=${stored.timings.contractsMs.toFixed(1)}`,
+      `mapping;dur=${stored.timings.mappingMs.toFixed(1)}`,
+    ] : []),
+    `sync;dur=${syncMs.toFixed(1)}`,
+    `engine;dur=${engineMs.toFixed(1)}`,
+    `serialization;dur=${serializationMs.toFixed(1)}`,
+  ].join(", "));
+  console.info("[analytics-v2] request completed", {
+    durationMs: Math.round(performance.now() - startedAt),
+    storageMs: Math.round(storageMs),
+    engineMs: Math.round(engineMs),
+    serializationMs: Math.round(serializationMs),
+    tenders: input.tenders.length,
+    lots: input.lots.length,
+    suppliers: result.suppliers.length,
+    drilldown: result.drilldown.length,
+  });
+  return response;
 }

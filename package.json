@@ -15,7 +15,7 @@
     "lint": "eslint .",
     "lint:quiet": "eslint . --quiet",
     "test": "npm run test:rules",
-    "test:rules": "node scripts/test-relevance.mjs && node scripts/test-territory.mjs && node scripts/test-team-matcher.mjs && node scripts/test-workbook-dictionary.mjs && node scripts/test-prozorro-analytics.mjs && node scripts/test-analytics-v2.mjs && node scripts/test-analytics-v2-schedule.mjs && node scripts/test-confidential-dashboard.mjs && NODE_OPTIONS=--conditions=react-server tsx scripts/test-account-credentials.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/test-confidential-auth.mjs && NODE_OPTIONS=--conditions=react-server tsx scripts/test-tender-workspace.ts && node scripts/test-spending-payments.mjs",
+    "test:rules": "node scripts/test-relevance.mjs && node scripts/test-territory.mjs && node scripts/test-team-matcher.mjs && node scripts/test-workbook-dictionary.mjs && node scripts/test-prozorro-analytics.mjs && node scripts/test-analytics-v2.mjs && node scripts/test-analytics-v2-schedule.mjs && npx tsx scripts/test-monitoring-rules.ts && NODE_OPTIONS=--conditions=react-server npx tsx scripts/test-tender-integrations.ts && node scripts/test-confidential-dashboard.mjs && NODE_OPTIONS=--conditions=react-server tsx scripts/test-account-credentials.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/test-confidential-auth.mjs && NODE_OPTIONS=--conditions=react-server tsx scripts/test-tender-workspace.ts && node scripts/test-spending-payments.mjs",
     "verify": "npm run typecheck && npm run lint:quiet && npm test && npm run build",
     "snapshot:internal": "node --env-file-if-exists=.env.local scripts/build-internal-snapshot.mjs",
     "snapshot:market": "node --env-file-if-exists=.env.local scripts/build-market-snapshot.mjs",
@@ -29,6 +29,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.8.0",
+    "@vercel/functions": "^3.9.5",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.28.0",
     "next": "16.3.0",

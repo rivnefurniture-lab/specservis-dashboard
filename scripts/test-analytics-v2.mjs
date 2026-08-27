@@ -119,6 +119,40 @@ assert.equal(advanced.summary.avgOtherBidders, 1);
 assert.equal(advanced.drilldown[0].externalTenderId, "UA-1");
 assert.equal(advanced.drilldown[0].participantCount, 2);
 assert.equal(advanced.drilldown[0].lotParticipants.length, 2);
+assert.equal(advanced.drilldown[0].bidId, "BID-1-new");
+assert.equal(advanced.drilldown[0].awardId, "A1-copy");
+assert.equal(advanced.drilldown[0].contracts[0].id, "C1");
+
+const commercialFilters = buildAnalyticsV2(dataset, {
+  lowestBidSupplierIds: ["Supplier Two"],
+  lowestBidAmountMin: 80,
+  lowestBidAmountMax: 90,
+  lowestRejected: true,
+  rejectionReasonQuery: "document",
+  awardAmountMin: 80,
+  awardAmountMax: 90,
+  originalContractAmountMin: 80,
+  originalContractAmountMax: 90,
+  currentContractAmountMin: 70,
+  currentContractAmountMax: 80,
+});
+assert.equal(commercialFilters.summary.tenders, 1, "bid, rejection, award and contract amount filters must correlate to the selected procurement");
+assert.equal(commercialFilters.drilldown[0].externalTenderId, "UA-1");
+
+const completedFinalAmount = buildAnalyticsV2(dataset, {
+  completedContractAmountMin: 7,
+  completedContractAmountMax: 9,
+});
+assert.equal(completedFinalAmount.summary.tenders, 1, "completed amount uses the published amount paid from the completion report");
+assert.equal(completedFinalAmount.summary.completedContracts, 1);
+
+const rawBuyerCode = buildAnalyticsV2({
+  ...dataset,
+  tenders: tenders.map((tender) => tender.id === "T1"
+    ? { ...tender, buyerId: "UA-EDR:12345678" }
+    : tender),
+}, { buyerIds: ["12345678"] });
+assert.equal(rawBuyerCode.summary.tenders, 1, "a raw EDRPOU value must match a scheme-prefixed party id");
 
 // Canonical schema adapter preserves source nulls and independent currencies.
 const provenance = { source: "prozorro-tender", sourceId: "x", sourcePath: "test", fetchedAt: null };
@@ -165,6 +199,8 @@ assert.equal(canonicalResult.summary.participations, 1);
 assert.equal(canonicalResult.summary.wins, 1);
 assert.equal(canonicalResult.summary.signedContracts, 1);
 assert.equal(canonicalResult.summary.completedContracts, 1);
+assert.equal(currency(canonicalResult.summary.completedAmount, "USD").value, 8);
+assert.equal(canonicalResult.drilldown[0].contracts[0].status, "terminated");
 assert.deepEqual(currency(canonicalResult.summary.originalAmount, "USD"), { currency: "USD", value: null, known: 0, total: 1 }, "award value must not be invented as original contract amount");
 assert.equal(currency(canonicalResult.summary.currentAmount, "USD").value, 8);
 assert.equal(currency(canonicalResult.summary.paidAmount, "USD").value, 0);

@@ -169,6 +169,7 @@ function party(value: unknown, fallback: string): CanonicalParty | null {
       id: identifierId,
       legalName: text(identifier.legalName),
     },
+    address: address(value.address),
   };
 }
 

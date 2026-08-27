@@ -18,6 +18,7 @@ async function authenticatedAccount() {
 }
 
 export async function GET() {
+  const startedAt = performance.now();
   const account = await authenticatedAccount();
   if (!account) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
   if (!account.tenderWorkspaceAccess || account.direction !== "Кондиціонування") {
@@ -25,8 +26,16 @@ export async function GET() {
   }
   try {
     const payload = await loadTenderWorkspace(account);
+    console.info("[tender-workspace] request completed", {
+      durationMs: Math.round(performance.now() - startedAt),
+      items: payload?.items.length ?? 0,
+    });
     return NextResponse.json(payload, { headers });
   } catch (error) {
+    console.error("[tender-workspace] request failed", {
+      durationMs: Math.round(performance.now() - startedAt),
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({
       error: "Tender workspace is unavailable",
       message: error instanceof Error ? error.message : "Unknown error",

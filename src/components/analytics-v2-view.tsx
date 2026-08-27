@@ -56,6 +56,10 @@ export type AnalyticsParticipantRow = {
   tenderId: string | null;
   prozorroUrl: string | null;
   title: string | null;
+  lotId: string | null;
+  bidId: string | null;
+  awardId: string | null;
+  contractIds: string[];
   date: string | null;
   buyerId: string | null;
   buyer: string | null;
@@ -76,6 +80,8 @@ export type AnalyticsParticipantRow = {
   contractCurrency: string | null;
   paidAmount: number | null;
   paidCurrency: string | null;
+  hasContractChanges: boolean | null;
+  contractDetails: string | null;
   status: string | null;
   source: string | null;
   confidence: AnalyticsConfidence;
@@ -109,6 +115,7 @@ type FacetKey =
   | "buyer"
   | "address"
   | "supplier"
+  | "lowestSupplier"
   | "currency"
   | "winner"
   | "ourStatus";
@@ -191,9 +198,21 @@ type FilterState = {
   minParticipants: string;
   maxParticipants: string;
   supplier: string;
+  lowestSupplier: string;
+  minLowestBid: string;
+  maxLowestBid: string;
   lowestRejection: "" | "yes" | "no";
+  rejectionReason: string;
   winner: string;
+  minAward: string;
+  maxAward: string;
   contract: "" | "yes" | "no";
+  minOriginalContract: string;
+  maxOriginalContract: string;
+  minCurrentContract: string;
+  maxCurrentContract: string;
+  minCompletedAmount: string;
+  maxCompletedAmount: string;
   paid: "" | "yes" | "no";
   changes: "" | "yes" | "no";
   ourStatus: string;
@@ -222,9 +241,21 @@ const defaultFilters: FilterState = {
   minParticipants: "",
   maxParticipants: "",
   supplier: "",
+  lowestSupplier: "",
+  minLowestBid: "",
+  maxLowestBid: "",
   lowestRejection: "",
+  rejectionReason: "",
   winner: "",
+  minAward: "",
+  maxAward: "",
   contract: "",
+  minOriginalContract: "",
+  maxOriginalContract: "",
+  minCurrentContract: "",
+  maxCurrentContract: "",
+  minCompletedAmount: "",
+  maxCompletedAmount: "",
   paid: "",
   changes: "",
   ourStatus: "",
@@ -232,6 +263,34 @@ const defaultFilters: FilterState = {
 
 const STORAGE_KEY = "specservis.analytics-v2.presets";
 const PRESETS_ENDPOINT = "/api/analytics-v2/presets";
+const ANALYTICS_CACHE_PREFIX = "specservis.analytics-v2:";
+const ANALYTICS_CACHE_TTL_MS = 5 * 60_000;
+
+function readAnalyticsCache(key: string) {
+  try {
+    const raw = window.sessionStorage.getItem(`${ANALYTICS_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { savedAt: number; payload: AnalyticsV2Response };
+    if (!cached.savedAt || Date.now() - cached.savedAt > ANALYTICS_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(`${ANALYTICS_CACHE_PREFIX}${key}`);
+      return null;
+    }
+    return cached.payload;
+  } catch {
+    return null;
+  }
+}
+
+function writeAnalyticsCache(key: string, payload: AnalyticsV2Response) {
+  try {
+    window.sessionStorage.setItem(
+      `${ANALYTICS_CACHE_PREFIX}${key}`,
+      JSON.stringify({ savedAt: Date.now(), payload }),
+    );
+  } catch {
+    // Live loading remains available when browser storage is unavailable.
+  }
+}
 const dateLenses: Array<{ id: FilterState["dateLens"]; label: string; hint: string }> = [
   { id: "publication", label: "Оголошено", hint: "Дата публікації закупівлі" },
   { id: "award", label: "Рішення", hint: "Дата рішення про переможця" },
@@ -292,7 +351,13 @@ function queryOf(filters: FilterState) {
   if (filters.supplier) params.set("supplier", filters.supplier);
   if (filters.procedure) params.set("procedure", filters.procedure);
   if (filters.currency) params.set("currency", filters.currency);
-  for (const key of ["scope", "subject", "category", "status", "region", "address", "minValue", "maxValue", "minParticipants", "maxParticipants", "lowestRejection", "winner", "contract", "paid", "changes", "ourStatus"] as const) {
+  for (const key of [
+    "scope", "subject", "category", "status", "region", "address", "minValue", "maxValue",
+    "minParticipants", "maxParticipants", "lowestSupplier", "minLowestBid", "maxLowestBid",
+    "lowestRejection", "rejectionReason", "winner", "minAward", "maxAward", "contract",
+    "minOriginalContract", "maxOriginalContract", "minCurrentContract", "maxCurrentContract",
+    "minCompletedAmount", "maxCompletedAmount", "paid", "changes", "ourStatus",
+  ] as const) {
     if (filters[key]) params.set(key, filters[key]);
   }
   return params;
@@ -313,7 +378,7 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
     { id: "wins", label: "Перемог", value: result.summary.wins, format: "integer", note: "Активні рішення про переможця", source: provenance, confidence },
     { id: "contracts", label: "Підписаних договорів", value: result.summary.signedContracts, format: "integer", note: "Активні та завершені", source: provenance, confidence },
     { id: "completed-contracts", label: "Завершених договорів", value: result.summary.completedContracts, format: "integer", note: "Завершення підтверджене джерелом", source: provenance, confidence },
-    { id: "terminated-contracts", label: "Розірваних / terminated", value: result.summary.earlyTerminatedContracts, format: "integer", note: "Показані окремо, але входять до укладених", source: provenance, confidence },
+    { id: "terminated-contracts", label: "Розірваних договорів", value: result.summary.earlyTerminatedContracts, format: "integer", note: "Показані окремо, але входять до укладених", source: provenance, confidence },
     { id: "win-rate", label: "Конверсія в перемогу", value: result.summary.winRate === null ? null : result.summary.winRate * 100, format: "percent", note: "Перемоги ÷ участі", source: "Розраховано", confidence },
     { id: "contract-conversion", label: "Перемога → договір", value: result.summary.contractConversion === null ? null : result.summary.contractConversion * 100, format: "percent", note: "Конкурентні договори ÷ перемоги", source: "Розраховано", confidence },
     { id: "other-bidders", label: "Інших учасників", value: result.summary.avgOtherBidders, format: "decimal", note: "Середнє на одну участь", source: "Розраховано", confidence },
@@ -341,6 +406,8 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
     source: provenance,
     confidence: amount.known === amount.total ? confidence : "low",
   }));
+  appendMoneyKpis("completed-contracts", "Сума завершених договорів", result.summary.completedAmount);
+  appendMoneyKpis("early-terminated-contracts", "Сума розірваних договорів", result.summary.earlyTerminatedAmount);
   result.summary.paidAmount.forEach((amount) => kpis.push({
     id: `paid-${amount.currency}`,
     label: `Фактично сплачено · ${amount.currency}`,
@@ -356,11 +423,18 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
     const contract = singleAggregate(row.currentAmount);
     const originalContract = singleAggregate(row.originalAmount);
     const paid = singleAggregate(row.paidAmount);
+    const hasContractChanges = row.contracts.length
+      ? row.contracts.some((contract) => contract.hasChanges === true)
+      : null;
     return {
       id: row.key,
       tenderId: row.externalTenderId || row.tenderId,
       prozorroUrl: row.prozorroUrl,
       title: row.lotTitle || row.tenderTitle,
+      lotId: row.lotId,
+      bidId: row.bidId,
+      awardId: row.awardId,
+      contractIds: row.contractIds,
       date: payload.filters.dateLens === "award" ? row.awardDate
         : payload.filters.dateLens === "contract" ? row.contractDate : row.publishedAt,
       buyerId: row.buyerId || null,
@@ -384,6 +458,15 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
       contractCurrency: contract?.currency ?? null,
       paidAmount: paid?.value ?? null,
       paidCurrency: paid?.currency ?? null,
+      hasContractChanges,
+      contractDetails: row.contracts.length
+        ? row.contracts.map((item) => [
+          item.number ? `№${item.number}` : item.id,
+          item.status,
+          item.signedAt ? `підписано ${item.signedAt.slice(0, 10)}` : null,
+          item.hasChanges === true ? "є зміни" : item.hasChanges === false ? "без змін" : null,
+        ].filter(Boolean).join(" · ")).join("; ")
+        : null,
       status: row.direct ? "Прямий договір" : row.contractStatuses.join(", ") || null,
       source: provenance,
       confidence,
@@ -441,6 +524,7 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
       region: options(payload.facets.regions),
       buyer: payload.facets.buyers?.map((buyer) => ({ value: buyer.id, label: buyer.name })) ?? [],
       supplier: (payload.facets.suppliers ?? result.suppliers).map((supplier) => ({ value: supplier.id, label: supplier.name })),
+      lowestSupplier: (payload.facets.suppliers ?? result.suppliers).map((supplier) => ({ value: supplier.id, label: supplier.name })),
       winner: (payload.facets.suppliers ?? result.suppliers).map((supplier) => ({ value: supplier.id, label: supplier.name })),
       ourStatus: options(payload.facets.ourStatuses),
       currency: options(payload.facets.currencies),
@@ -550,6 +634,21 @@ function TriState({ id, label, value, onChange }: {
   );
 }
 
+function NumberFilter({ id, label, value, placeholder, onChange }: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.field} htmlFor={id}>
+      <span>{label}</span>
+      <input id={id} inputMode="decimal" type="number" min="0" step="any" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
 export function AnalyticsV2View({
   initialData,
   endpoint = "/api/analytics-v2",
@@ -571,11 +670,19 @@ export function AnalyticsV2View({
   const [selectedCell, setSelectedCell] = useState<AnalyticsMatrixCell | null>(null);
 
   const load = useCallback(async (filters: FilterState, signal?: AbortSignal) => {
-    setLoading(true);
+    const requestKey = queryOf(filters).toString();
+    const cached = readAnalyticsCache(requestKey);
+    if (cached) {
+      setData(normalizeResponse(cached));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
-      const response = await fetch(`${endpoint}?${queryOf(filters)}`, { cache: "no-store", signal });
+      const response = await fetch(`${endpoint}?${requestKey}`, { cache: "no-store", signal });
       const payload = await response.json() as AnalyticsV2Response & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Не вдалося завантажити аналітику");
+      writeAnalyticsCache(requestKey, payload);
       setData(normalizeResponse(payload));
       setError("");
       setSelectedCell(null);
@@ -604,18 +711,27 @@ export function AnalyticsV2View({
     void loadPresets();
     if (initialData) return;
     const controller = new AbortController();
-    void fetch(`${endpoint}?${queryOf(baseFilters)}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const payload = await response.json() as AnalyticsV2Response & { error?: string };
-        if (!response.ok) throw new Error(payload.error || "Не вдалося завантажити аналітику");
-        setData(normalizeResponse(payload));
-        setError("");
-      })
-      .catch((cause: unknown) => {
-        if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Невідома помилка");
-      })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+    const requestKey = queryOf(baseFilters).toString();
+    const cached = readAnalyticsCache(requestKey);
+    const timer = window.setTimeout(() => {
+      if (cached) {
+        setData(normalizeResponse(cached));
+        setLoading(false);
+      }
+      void fetch(`${endpoint}?${requestKey}`, { cache: "no-store", signal: controller.signal })
+        .then(async (response) => {
+          const payload = await response.json() as AnalyticsV2Response & { error?: string };
+          if (!response.ok) throw new Error(payload.error || "Не вдалося завантажити аналітику");
+          writeAnalyticsCache(requestKey, payload);
+          setData(normalizeResponse(payload));
+          setError("");
+        })
+        .catch((cause: unknown) => {
+          if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Невідома помилка");
+        })
+        .finally(() => setLoading(false));
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [baseFilters, endpoint, initialData]);
 
   const update = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
@@ -700,7 +816,7 @@ export function AnalyticsV2View({
     <div className={styles.analytics} aria-busy={loading}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>ANALYTICS V2 · ДОКАЗОВИЙ ЗРІЗ</span>
+          <span className={styles.eyebrow}>АНАЛІТИКА ЗАКУПІВЕЛЬ</span>
           <h1>Ринок, учасники та договори в одному запиті</h1>
           <p>Перемикайте часову лінзу, звужуйте зріз і переходьте від показника до фактичної пари постачальник × замовник.</p>
           <div className={styles.heroMeta}>
@@ -764,15 +880,27 @@ export function AnalyticsV2View({
             <FacetInput id="analytics-region" label="Регіон" value={draft.region} options={data?.facets.region} placeholder="Усі регіони" onChange={(value) => update("region", value)} />
             <FacetInput id="analytics-buyer" label="Замовник" value={draft.buyer} options={data?.facets.buyer} placeholder="Назва або ЄДРПОУ" onChange={(value) => update("buyer", value)} />
             <FacetInput id="analytics-address" label="Адреса виконання" value={draft.address} options={data?.facets.address} placeholder="Місто, область, адреса" onChange={(value) => update("address", value)} />
-            <label className={styles.field}><span>Вартість від</span><input inputMode="numeric" type="number" min="0" value={draft.minValue} placeholder="Без мінімуму" onChange={(event) => update("minValue", event.target.value)} /></label>
-            <label className={styles.field}><span>Вартість до</span><input inputMode="numeric" type="number" min="0" value={draft.maxValue} placeholder="Без максимуму" onChange={(event) => update("maxValue", event.target.value)} /></label>
+            <NumberFilter id="analytics-min-value" label="Очікувана вартість від" value={draft.minValue} placeholder="Без мінімуму" onChange={(value) => update("minValue", value)} />
+            <NumberFilter id="analytics-max-value" label="Очікувана вартість до" value={draft.maxValue} placeholder="Без максимуму" onChange={(value) => update("maxValue", value)} />
             <FacetInput id="analytics-currency" label="Валюта вартості" value={draft.currency} options={data?.facets.currency} placeholder="Усі валюти" onChange={(value) => update("currency", value)} />
-            <label className={styles.field}><span>Учасників від</span><input inputMode="numeric" type="number" min="0" value={draft.minParticipants} placeholder="Без мінімуму" onChange={(event) => update("minParticipants", event.target.value)} /></label>
-            <label className={styles.field}><span>Учасників до</span><input inputMode="numeric" type="number" min="0" value={draft.maxParticipants} placeholder="Без максимуму" onChange={(event) => update("maxParticipants", event.target.value)} /></label>
+            <NumberFilter id="analytics-min-participants" label="Учасників від" value={draft.minParticipants} placeholder="Без мінімуму" onChange={(value) => update("minParticipants", value)} />
+            <NumberFilter id="analytics-max-participants" label="Учасників до" value={draft.maxParticipants} placeholder="Без максимуму" onChange={(value) => update("maxParticipants", value)} />
             <FacetInput id="analytics-supplier" label="Постачальник" value={draft.supplier} options={data?.facets.supplier} placeholder="Назва або ЄДРПОУ" onChange={(value) => update("supplier", value)} />
+            <FacetInput id="analytics-lowest-supplier" label="Учасник із найнижчою ціною" value={draft.lowestSupplier} options={data?.facets.lowestSupplier} placeholder="Назва або ЄДРПОУ" onChange={(value) => update("lowestSupplier", value)} />
+            <NumberFilter id="analytics-min-lowest-bid" label="Найнижча пропозиція від" value={draft.minLowestBid} placeholder="Без мінімуму" onChange={(value) => update("minLowestBid", value)} />
+            <NumberFilter id="analytics-max-lowest-bid" label="Найнижча пропозиція до" value={draft.maxLowestBid} placeholder="Без максимуму" onChange={(value) => update("maxLowestBid", value)} />
             <TriState id="analytics-lowest-rejection" label="Відхилена найнижча" value={draft.lowestRejection} onChange={(value) => update("lowestRejection", value)} />
+            <FacetInput id="analytics-rejection-reason" label="Причина відхилення" value={draft.rejectionReason} placeholder="Слова у причині" onChange={(value) => update("rejectionReason", value)} />
             <FacetInput id="analytics-winner" label="Переможець" value={draft.winner} options={data?.facets.winner} placeholder="Будь-який переможець" onChange={(value) => update("winner", value)} />
+            <NumberFilter id="analytics-min-award" label="Сума рішення про перемогу від" value={draft.minAward} placeholder="Без мінімуму" onChange={(value) => update("minAward", value)} />
+            <NumberFilter id="analytics-max-award" label="Сума рішення про перемогу до" value={draft.maxAward} placeholder="Без максимуму" onChange={(value) => update("maxAward", value)} />
             <TriState id="analytics-contract" label="Є договір" value={draft.contract} onChange={(value) => update("contract", value)} />
+            <NumberFilter id="analytics-min-original-contract" label="Первинна сума договору від" value={draft.minOriginalContract} placeholder="Без мінімуму" onChange={(value) => update("minOriginalContract", value)} />
+            <NumberFilter id="analytics-max-original-contract" label="Первинна сума договору до" value={draft.maxOriginalContract} placeholder="Без максимуму" onChange={(value) => update("maxOriginalContract", value)} />
+            <NumberFilter id="analytics-min-current-contract" label="Поточна сума договору від" value={draft.minCurrentContract} placeholder="Без мінімуму" onChange={(value) => update("minCurrentContract", value)} />
+            <NumberFilter id="analytics-max-current-contract" label="Поточна сума договору до" value={draft.maxCurrentContract} placeholder="Без максимуму" onChange={(value) => update("maxCurrentContract", value)} />
+            <NumberFilter id="analytics-min-completed-amount" label="Після виконання сплачено від" value={draft.minCompletedAmount} placeholder="Без мінімуму" onChange={(value) => update("minCompletedAmount", value)} />
+            <NumberFilter id="analytics-max-completed-amount" label="Після виконання сплачено до" value={draft.maxCompletedAmount} placeholder="Без максимуму" onChange={(value) => update("maxCompletedAmount", value)} />
             <TriState id="analytics-paid" label="Є оплата" value={draft.paid} onChange={(value) => update("paid", value)} />
             <TriState id="analytics-changes" label="Є зміни договору" value={draft.changes} onChange={(value) => update("changes", value)} />
             <FacetInput id="analytics-our-status" label="Наш статус" value={draft.ourStatus} options={data?.facets.ourStatus} placeholder="Будь-який статус" onChange={(value) => update("ourStatus", value)} />
@@ -806,7 +934,7 @@ export function AnalyticsV2View({
       {data?.warnings?.map((warning) => <div className={styles.warning} key={warning}><CircleHelp size={16} /><span>{warning}</span></div>)}
 
       {loading && !data ? (
-        <div className={styles.loadingState}><LoaderCircle className={styles.spin} size={28} /><b>Формуємо доказовий зріз…</b><span>Зводимо закупівлі, участі, договори й оплати.</span></div>
+        <div className={styles.loadingState}><LoaderCircle className={styles.spin} size={28} /><b>Зводимо дані…</b><span>Збираємо закупівлі, участі, договори й оплати.</span></div>
       ) : data ? (
         <>
           <section className={styles.sourceStrip} aria-label="Стан джерел">
@@ -862,13 +990,24 @@ export function AnalyticsV2View({
                     <tbody>
                       {data.participants.items.map((row) => (
                         <tr key={row.id}>
-                          <td><strong>{row.prozorroUrl ? <a href={row.prozorroUrl} target="_blank" rel="noreferrer">{row.title || "Предмет відсутній"}</a> : row.title || "Предмет відсутній"}</strong><small>{row.tenderId || "ID відсутній"} · {row.date || "дата відсутня у джерелі"}</small></td>
+                          <td>
+                            <strong>{row.prozorroUrl ? <a href={row.prozorroUrl} target="_blank" rel="noreferrer">{row.title || "Предмет відсутній"}</a> : row.title || "Предмет відсутній"}</strong>
+                            <small>{row.tenderId || "ID відсутній"} · {row.date || "дата відсутня у джерелі"}</small>
+                            <small>Лот: {row.lotId || "не вказано"} · пропозиція: {row.bidId || "не подана"} · рішення: {row.awardId || "немає"}</small>
+                          </td>
                           <td>{row.buyer || <em>Немає даних</em>}</td>
                           <td>{row.supplier || <em>Немає даних</em>}</td>
                           <td title={row.participantDetails ?? undefined}>{row.participants === null ? <em>Немає даних</em> : integerFormatter.format(row.participants)}{row.participantDetails ? <small>Усі пропозиції доступні в підказці</small> : null}</td>
                           <td>{row.offerValue === null ? <em>Немає даних</em> : formatNumber(row.offerValue, "money", row.offerCurrency)}{row.lowestRejected === true ? <small className={styles.riskText}>Найнижчу відхилено{row.rejectionReason ? `: ${row.rejectionReason}` : ""}</small> : row.lowestRejected === null ? <small>Відхилення: немає даних</small> : null}</td>
                           <td><span className={row.winner === true ? styles.winPill : row.winner === false ? styles.lossPill : styles.neutralPill}>{row.winner === true ? "Переможець" : row.winner === false ? row.status || "Не переміг" : row.status || "Немає рішення"}</span>{row.awardValue !== null ? <small>Рішення: {formatNumber(row.awardValue, "money", row.awardCurrency)}</small> : null}</td>
-                          <td><strong>{row.contractValue === null ? "—" : formatNumber(row.contractValue, "money", row.contractCurrency)}</strong><small>Первинна: {row.originalContractValue === null ? "немає даних" : formatNumber(row.originalContractValue, "money", row.originalContractCurrency)}</small><small>Сплачено: {row.paidAmount === null ? "немає даних" : formatNumber(row.paidAmount, "money", row.paidCurrency)}</small>{row.status ? <small>Статус: {row.status}</small> : null}</td>
+                          <td title={row.contractDetails ?? undefined}>
+                            <strong>{row.contractValue === null ? "—" : formatNumber(row.contractValue, "money", row.contractCurrency)}</strong>
+                            <small>Первинна: {row.originalContractValue === null ? "немає даних" : formatNumber(row.originalContractValue, "money", row.originalContractCurrency)}</small>
+                            <small>Сплачено: {row.paidAmount === null ? "немає даних" : formatNumber(row.paidAmount, "money", row.paidCurrency)}</small>
+                            {row.contractIds.length ? <small>ID: {row.contractIds.join(", ")}</small> : null}
+                            {row.hasContractChanges !== null ? <small>{row.hasContractChanges ? "Є оприлюднені зміни" : "Оприлюднених змін немає"}</small> : null}
+                            {row.status ? <small>Статус: {row.status}</small> : null}
+                          </td>
                           <td><SourceLine source={row.source} confidence={row.confidence} /></td>
                         </tr>
                       ))}
@@ -931,9 +1070,11 @@ export function AnalyticsV2View({
                           <article key={tender.id}>
                             <span>{tender.tenderId || "ID відсутній"}</span>
                             <strong>{tender.prozorroUrl ? <a href={tender.prozorroUrl} target="_blank" rel="noreferrer">{tender.title || "Предмет відсутній"}</a> : tender.title || "Предмет відсутній"}</strong>
+                            <small>Лот: {tender.lotId || "не вказано"} · пропозиція: {tender.bidId || "не подана"} · рішення: {tender.awardId || "немає"}</small>
                             <small>{tender.participantDetails ? `Усі учасники: ${tender.participantDetails}` : "Учасники: немає даних"}</small>
                             {tender.rejectionReason ? <small className={styles.riskText}>Причина відхилення: {tender.rejectionReason}</small> : null}
                             <small>{tender.contractValue === null ? "Договір: немає даних" : `Договір: ${formatNumber(tender.contractValue, "money", tender.contractCurrency)}`}</small>
+                            {tender.contractDetails ? <small>{tender.contractDetails}</small> : null}
                             <ChevronRight size={14} aria-hidden="true" />
                           </article>
                         ))}

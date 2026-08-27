@@ -1,6 +1,7 @@
 import "server-only";
 
 const SPENDING_TRANSACTIONS_URL = "https://api.spending.gov.ua/api/v2/api/transactions/";
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export type SpendingTransaction = {
   id: number;
@@ -112,11 +113,32 @@ export async function fetchSpendingTransactions(
   url.searchParams.set("enddate", endDate);
   url.searchParams.set("payers_edrpous", identifier(buyerIdentifier));
   url.searchParams.set("recipt_edrpous", identifier(supplierIdentifier));
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
-  if (!response.ok) throw new Error(`Spending API ${response.status}`);
-  const payload: unknown = await response.json();
-  if (!Array.isArray(payload)) throw new Error("Spending API returned an invalid payload");
-  return payload.filter((item): item is SpendingTransaction => Boolean(item && typeof item === "object" && Number.isFinite(Number((item as SpendingTransaction).id))));
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
+    } catch (error) {
+      lastError = error;
+      if (attempt === 4) throw error;
+      await wait(300 * attempt ** 2);
+      continue;
+    }
+
+    if (!response.ok) {
+      const error = new Error(`Spending API ${response.status}`);
+      const retryable = response.status === 429 || response.status >= 500;
+      if (!retryable || attempt === 4) throw error;
+      lastError = error;
+      await wait(300 * attempt ** 2);
+      continue;
+    }
+
+    const payload: unknown = await response.json();
+    if (!Array.isArray(payload)) throw new Error("Spending API returned an invalid payload");
+    return payload.filter((item): item is SpendingTransaction => Boolean(item && typeof item === "object" && Number.isFinite(Number((item as SpendingTransaction).id))));
+  }
+  throw lastError instanceof Error ? lastError : new Error("Spending API request failed");
 }
 
 export function summarizeConfirmedPayments(payments: MatchedSpendingPayment[]) {

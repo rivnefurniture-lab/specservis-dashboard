@@ -1,11 +1,7 @@
 // @ts-check
 
-import { classifyTender, conditioningCodes, constructionCodes, serviceCodes } from "./relevance.mjs";
-import { classifyTerritory, isTargetTerritory, scopedTerritoryDirections } from "./territory.mjs";
-
 const ROOT = "https://smarttender.biz";
 const DETAIL = "https://api.smarttender.biz/prozorro/Tenders";
-const KEYWORDS = ["кондиціонер", "вентиляція", "чилер", "фанкойл", "тепловий насос", "холодильне обладнання", "теплообмінник", "рекуператор", "будівництво"];
 const wait = (/** @type {number} */ milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function search(/** @type {string} */ day) {
@@ -25,23 +21,6 @@ function search(/** @type {string} */ day) {
 function publicationDay(/** @type {unknown} */ value) {
   const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(value ?? "").trim());
   return match ? `${match[3]}-${match[2]}-${match[1]}` : String(value ?? "").slice(0, 10);
-}
-
-function detailItems(/** @type {any} */ detail) {
-  return [...(detail?.items ?? []), ...(detail?.lots ?? []).flatMap((/** @type {any} */ lot) => lot?.items ?? [])];
-}
-
-function deliveryLocations(/** @type {any} */ detail) {
-  return [...new Set(detailItems(detail).flatMap((/** @type {any} */ item) => {
-    const address = item?.deliveryAddress;
-    const label = [address?.region, address?.locality].map((value) => String(value ?? "").trim()).filter(Boolean).join(" · ");
-    return label ? [label] : [];
-  }))];
-}
-
-function deliveryDescriptions(/** @type {any} */ detail) {
-  return [...new Set(detailItems(detail).flatMap((/** @type {any} */ item) => [item?.description, item?.deliveryAddress?.streetAddress]
-    .map((value) => String(value ?? "").trim()).filter(Boolean)))];
 }
 
 async function json(/** @type {string} */ url, /** @type {RequestInit} */ init = {}, attempt = 1) {
@@ -71,7 +50,7 @@ function classificationRows(/** @type {any[]} */ tree) {
 /**
  * Discover exact official Prozorro UUIDs through SmartTender search.
  * @param {{day: string, username: string, password: string, pageConcurrency?: number,
- * cpvPrefixes?: string[], phrases?: string[], monitoringRules?: boolean, detailConcurrency?: number}} options
+ * cpvPrefixes?: string[], phrases?: string[], monitoringRules?: boolean, monitoringRuleSet?: any, detailConcurrency?: number}} options
  */
 export async function discoverAnalyticsTenders({
   day,
@@ -81,6 +60,7 @@ export async function discoverAnalyticsTenders({
   cpvPrefixes = [],
   phrases = [],
   monitoringRules = false,
+  monitoringRuleSet = null,
   detailConcurrency = 4,
 }) {
   if (!username || !password) throw new Error("SMARTTENDER_USERNAME and SMARTTENDER_PASSWORD are required");
@@ -100,20 +80,41 @@ export async function discoverAnalyticsTenders({
   };
   const tree = await json(`${ROOT}/ReferenceBook/GetClassification/?schemeType=1`);
   const classifications = classificationRows(tree);
+  const activeRules = monitoringRules && monitoringRuleSet?.directions
+    ? monitoringRuleSet.directions
+    : [];
+  const ruleCodes = activeRules.flatMap((/** @type {any} */ direction) => direction.cpv ?? []);
+  const rulePhrases = activeRules.flatMap((/** @type {any} */ direction) => [
+    ...(direction.terms ?? []), ...(direction.brands ?? []),
+  ]).flatMap((/** @type {any} */ entry) => [entry.value, ...(entry.variants ?? [])]);
   const profiles = monitoringRules
-    ? [constructionCodes, serviceCodes, conditioningCodes]
-      .map((codes) => classifications.filter((item) => codes.has(item.code)).map((item) => item.id))
+    ? activeRules.map((/** @type {any} */ direction) => {
+        const directionCodes = direction.cpv ?? [];
+        return classifications.filter((item) => directionCodes.some((/** @type {any} */ rule) => {
+          const code = String(rule.code ?? "").replace(/\D/g, "").slice(0, 8).padEnd(8, "0");
+          const prefix = code.replace(/0+$/, "") || code;
+          return rule.includeDescendants ? item.code.startsWith(prefix) : item.code === code;
+        })).map((item) => item.id);
+      })
     : cpvPrefixes.length
       ? [classifications.filter((item) => cpvPrefixes.some((prefix) => item.code.startsWith(prefix))).map((item) => item.id)]
       : [];
   const raw = [];
   for (const ids of profiles) if (ids.length) raw.push(...await all({ ...search(day), CategoryIds: ids }));
-  for (const phrase of monitoringRules ? KEYWORDS : phrases) raw.push(...await all({ ...search(day), Phrase: phrase }));
+  for (const phrase of monitoringRules ? [...new Set(rulePhrases)].filter(Boolean) : phrases) {
+    raw.push(...await all({ ...search(day), Phrase: phrase }));
+  }
 
   const candidates = [...new Map(raw.map((row) => [String(row.Id), row])).values()].filter((row) => {
     if (publicationDay(row.PublishedDateTitle) !== day) return false;
-    const code = String(row.Classification?.Code ?? "").replace(/\D/g, "").slice(0, 8);
-    return monitoringRules ? Boolean(classifyTender(code, String(row.Subject ?? "")).direction) : true;
+    if (!monitoringRules) return true;
+    const code = String(row.Classification?.Code ?? "").replace(/\D/g, "").slice(0, 8).padEnd(8, "0");
+    const byCode = ruleCodes.some((/** @type {any} */ rule) => {
+      const ruleCode = String(rule.code ?? "").replace(/\D/g, "").slice(0, 8).padEnd(8, "0");
+      const prefix = ruleCode.replace(/0+$/, "") || ruleCode;
+      return rule.includeDescendants ? code.startsWith(prefix) : code === ruleCode;
+    });
+    return byCode || Boolean(String(row.Subject ?? "").trim());
   });
   let cursor = 0;
   const results = new Array(candidates.length);
@@ -123,25 +124,13 @@ export async function discoverAnalyticsTenders({
       const row = candidates[index];
       const detail = await json(`${DETAIL}/${encodeURIComponent(String(row.Id))}`, { headers: { Authorization: authorization } });
       const id = typeof detail?.cdbId === "string" ? detail.cdbId : null;
-      const code = String(row.Classification?.Code ?? "").replace(/\D/g, "").slice(0, 8);
-      const direction = classifyTender(code, String(row.Subject ?? "")).direction;
-      const organizerRegion = String(row.Organizer?.Address?.RegionTitle ?? "").trim();
-      const territory = monitoringRules && direction && scopedTerritoryDirections.has(direction)
-        ? classifyTerritory({
-            direction,
-            title: String(row.Subject ?? ""),
-            organizerRegion,
-            deliveryLocations: deliveryLocations(detail),
-            deliveryDescriptions: deliveryDescriptions(detail),
-          })
-        : null;
-      results[index] = id && (!territory || isTargetTerritory(territory)) ? { id, direction } : null;
+      results[index] = id ? { id, direction: null } : null;
     }
   }));
   return results.filter(Boolean);
 }
 
-/** @param {{day: string, username: string, password: string, pageConcurrency?: number, detailConcurrency?: number}} options */
+/** @param {{day: string, username: string, password: string, pageConcurrency?: number, detailConcurrency?: number, monitoringRuleSet?: any}} options */
 export function discoverMonitoringTenders(options) {
   return discoverAnalyticsTenders({ ...options, monitoringRules: true });
 }

@@ -7,12 +7,15 @@ import {
 } from "@/lib/analytics-v2-expanded";
 import { importProzorroAnalytics } from "@/lib/prozorro-analytics";
 import { persistAnalyticsV2 } from "@/lib/analytics-v2-persist";
+import { classifyMonitoringDataset } from "@/lib/monitoring-classification";
+import { loadActiveMonitoringRuleSet } from "@/lib/monitoring-rule-store";
 import { ensureAnalyticsV2Schema } from "@/lib/analytics-v2-migrate";
-import { analyticsDiscoveryWindow } from "@/lib/analytics-v2-schedule";
+import { analyticsControlWindow, analyticsDiscoveryWindow, type AnalyticsControlWindow } from "@/lib/analytics-v2-schedule";
 import type { ProzorroAnalyticsDataset } from "@/lib/analytics-v2-schema";
 import {
   acquireAnalyticsSyncLease,
   analyticsTenderIdsForContracts,
+  analyticsTenderIdsForControl,
   analyticsTenderIdsMissingPublication,
   completeAnalyticsQueueItems,
   enqueueAnalyticsTenders,
@@ -108,12 +111,17 @@ async function importTenderIds(items: DiscoveredTender[], target: ImportTarget =
     }
   }));
   if (datasets.length) {
-    await persistAnalyticsV2(mergeDatasets(datasets, importedAt), {
+    const merged = mergeDatasets(datasets, importedAt);
+    const monitoring = target.scope === "monitoring"
+      ? classifyMonitoringDataset(merged, await loadActiveMonitoringRuleSet())
+      : undefined;
+    await persistAnalyticsV2(merged, {
       datasetId: target.datasetId,
       scope: target.scope,
       sourceName: target.sourceName,
       filters: target.filters,
       directions,
+      monitoring,
       replaceMembership: false,
     });
   }
@@ -140,34 +148,44 @@ async function processImportQueue(): Promise<SyncPart> {
   let processed = 0;
   let imported = 0;
   try {
-    const rows = await nextAnalyticsQueueItems(integerEnv("ANALYTICS_IMPORT_BATCH", 100, 1, 150));
-    const groups = new Map<string, typeof rows>();
-    for (const row of rows) groups.set(row.dataset_id, [...(groups.get(row.dataset_id) ?? []), row]);
-    for (const group of groups.values()) {
-      const first = group[0];
-      const target: ImportTarget = {
-        datasetId: first.dataset_id,
-        scope: first.scope_mode,
-        sourceName: first.source_name,
-        filters: first.filter_definition,
-      };
-      try {
-        const result = await importTenderIds(group.map((row) => ({ id: row.tender_id, direction: row.direction })), target);
-        processed += group.length;
-        imported += result.imported;
-        await completeAnalyticsQueueItems(result.successfulIds.map((tenderId) => ({ datasetId: target.datasetId, tenderId })));
-        for (const failure of result.failureDetails) {
-          await failAnalyticsQueueItem(target.datasetId, failure.id, failure.error);
-          errors.push(`${failure.id}: ${failure.error}`);
+    const started = Date.now();
+    const budgetMs = integerEnv("ANALYTICS_QUEUE_BUDGET_MS", 70_000, 20_000, 120_000);
+    const maxBatches = integerEnv("ANALYTICS_QUEUE_BATCHES", 8, 1, 20);
+    const batchSize = integerEnv("ANALYTICS_IMPORT_BATCH", 100, 1, 150);
+    for (let batch = 0; batch < maxBatches && Date.now() - started < budgetMs; batch += 1) {
+      const rows = await nextAnalyticsQueueItems(batchSize);
+      if (!rows.length) break;
+      const importedBeforeBatch = imported;
+      const groups = new Map<string, typeof rows>();
+      for (const row of rows) groups.set(row.dataset_id, [...(groups.get(row.dataset_id) ?? []), row]);
+      for (const group of groups.values()) {
+        const first = group[0];
+        const target: ImportTarget = {
+          datasetId: first.dataset_id,
+          scope: first.scope_mode,
+          sourceName: first.source_name,
+          filters: first.filter_definition,
+        };
+        try {
+          const result = await importTenderIds(group.map((row) => ({ id: row.tender_id, direction: row.direction })), target);
+          processed += group.length;
+          imported += result.imported;
+          await completeAnalyticsQueueItems(result.successfulIds.map((tenderId) => ({ datasetId: target.datasetId, tenderId })));
+          for (const failure of result.failureDetails) {
+            await failAnalyticsQueueItem(target.datasetId, failure.id, failure.error);
+            errors.push(`${failure.id}: ${failure.error}`);
+          }
+        } catch (error) {
+          const errorText = error instanceof Error ? error.message : String(error);
+          for (const row of group) await failAnalyticsQueueItem(row.dataset_id, row.tender_id, error);
+          errors.push(`${target.datasetId}: ${errorText}`);
         }
-      } catch (error) {
-        const errorText = error instanceof Error ? error.message : String(error);
-        for (const row of group) await failAnalyticsQueueItem(row.dataset_id, row.tender_id, error);
-        errors.push(`${target.datasetId}: ${errorText}`);
       }
+      const remaining = await queuedAnalyticsCount();
+      await lease.checkpoint(String(remaining), rows.length, imported - importedBeforeBatch, { remaining, batch: batch + 1 });
     }
     const remaining = await queuedAnalyticsCount();
-    await lease.succeed(processed, imported, { remaining, lastRunErrors: errors.length });
+    await lease.succeed(0, 0, { remaining, lastRunErrors: errors.length });
     return { stream, busy: false, processed, imported, cursor: String(remaining), errors };
   } catch (error) {
     await lease.fail(error);
@@ -296,7 +314,7 @@ async function syncDiscovery(): Promise<SyncPart> {
   const imported = 0;
   let cursor = lease.cursor;
   try {
-    const historyDays = integerEnv("ANALYTICS_HISTORY_DAYS", 120, 31, 730);
+    const historyDays = integerEnv("ANALYTICS_HISTORY_DAYS", 3_650, 31, 5_000);
     const oldest = utcDay(historyDays - 1);
     const historicalDay = cursor === "complete"
       ? null
@@ -310,12 +328,14 @@ async function syncDiscovery(): Promise<SyncPart> {
       : window === "yesterday" ? utcDay(1) : historicalDay ?? utcDay(0);
     const days = [day];
     for (const day of days) {
+      const monitoringRuleSet = await loadActiveMonitoringRuleSet();
       const found = await discoverMonitoringTenders({
         day,
         username: process.env.SMARTTENDER_USERNAME ?? "",
         password: process.env.SMARTTENDER_PASSWORD ?? "",
         pageConcurrency: integerEnv("ANALYTICS_SEARCH_CONCURRENCY", 6, 1, 10),
         detailConcurrency: integerEnv("ANALYTICS_DISCOVERY_DETAIL_CONCURRENCY", 4, 1, 6),
+        monitoringRuleSet,
       }) as DiscoveredTender[];
       processed += found.length;
       const known = await knownAnalyticsTenderIds(found.map((item) => item.id), DATASET_ID);
@@ -338,23 +358,70 @@ async function syncDiscovery(): Promise<SyncPart> {
   }
 }
 
-let running: Promise<Awaited<ReturnType<typeof runAnalyticsSync>>> | null = null;
+function controlStreamKey(mode: AnalyticsControlWindow, date: Date) {
+  const day = date.toISOString().slice(0, 10);
+  return mode === "full-history" ? `monitoring-control:${mode}:${day.slice(0, 7)}` : `monitoring-control:${mode}:${day}`;
+}
 
-async function runAnalyticsSync() {
+async function syncControlPass(mode: AnalyticsControlWindow, date: Date): Promise<SyncPart> {
+  const stream = controlStreamKey(mode, date);
+  const lease = await acquireAnalyticsSyncLease(stream);
+  if (!lease) return { stream, busy: true, processed: 0, imported: 0, cursor: null, errors: [] };
+  if (lease.cursor === "complete") {
+    await lease.succeed(0, 0, { mode, complete: true });
+    return { stream, busy: false, processed: 0, imported: 0, cursor: "complete", errors: [] };
+  }
+  const errors: string[] = [];
+  try {
+    const batchSize = integerEnv("ANALYTICS_CONTROL_BATCH", 100, 10, 250);
+    const ids = await analyticsTenderIdsForControl(DATASET_ID, mode, lease.cursor, batchSize);
+    const nextCursor = ids.length < batchSize ? "complete" : ids.at(-1) ?? "complete";
+    await enqueue(ids.map((id) => ({ id, direction: null })), monitoringTarget, mode === "recent-30-days" ? 24 : 12);
+    await lease.checkpoint(nextCursor, ids.length, 0, { mode, complete: nextCursor === "complete" });
+    await lease.succeed(0, 0, { mode, complete: nextCursor === "complete" });
+    return { stream, busy: false, processed: ids.length, imported: 0, cursor: nextCursor, errors };
+  } catch (error) {
+    await lease.fail(error);
+    errors.push(error instanceof Error ? error.message : String(error));
+    return { stream, busy: false, processed: 0, imported: 0, cursor: lease.cursor, errors };
+  }
+}
+
+export type AnalyticsSyncMode = "discovery" | "import";
+const running = new Map<AnalyticsSyncMode, Promise<Awaited<ReturnType<typeof runAnalyticsSync>>>>();
+
+async function runAnalyticsSync(mode: AnalyticsSyncMode) {
   const startedAt = new Date();
   await ensureAnalyticsV2Schema();
-  await ensureMonitoringDiscoveryVersion("publication-territory-v4-workspace-periods");
-  const [discovery, tenders, contracts, expanded] = await Promise.all([
+  if (mode === "import") {
+    const queue = await processImportQueue();
+    return {
+      ok: queue.errors.length === 0,
+      mode,
+      startedAt: startedAt.toISOString(),
+      finishedAt: new Date().toISOString(),
+      processed: queue.processed,
+      imported: queue.imported,
+      busy: queue.busy ? [queue.stream] : [],
+      parts: [queue],
+      workspace: null,
+      errors: queue.errors.slice(0, 50),
+    };
+  }
+  const activeRules = await loadActiveMonitoringRuleSet();
+  await ensureMonitoringDiscoveryVersion(`monitoring-classification:v3:${activeRules.version}`);
+  const [discovery, tenders, contracts, expanded, control, workspace] = await Promise.all([
     syncDiscovery(), syncFeed("tenders"), syncFeed("contracts"), syncExpandedRequest(),
+    syncControlPass(analyticsControlWindow(startedAt), startedAt),
+    syncTenderWorkspace(),
   ]);
   const missingPublication = await analyticsTenderIdsMissingPublication(DATASET_ID);
   await enqueue(missingPublication.map((id) => ({ id, direction: null })), monitoringTarget, 30);
-  const queue = await processImportQueue();
-  const workspace = await syncTenderWorkspace();
-  const parts = [discovery, tenders, contracts, expanded, queue];
+  const parts = [discovery, tenders, contracts, expanded, control];
   const errors = parts.flatMap((part) => part.errors);
   return {
     ok: errors.length === 0,
+    mode,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     processed: parts.reduce((sum, part) => sum + part.processed, 0),
@@ -366,8 +433,10 @@ async function runAnalyticsSync() {
   };
 }
 
-export function syncAnalyticsV2() {
-  if (running) return running;
-  running = runAnalyticsSync().finally(() => { running = null; });
-  return running;
+export function syncAnalyticsV2(mode: AnalyticsSyncMode = "discovery") {
+  const active = running.get(mode);
+  if (active) return active;
+  const task = runAnalyticsSync(mode).finally(() => { running.delete(mode); });
+  running.set(mode, task);
+  return task;
 }

@@ -58,6 +58,13 @@ export type CanonicalParty = {
     id: string | null;
     legalName: string | null;
   };
+  address: {
+    countryName: string | null;
+    region: string | null;
+    locality: string | null;
+    streetAddress: string | null;
+    postalCode: string | null;
+  } | null;
 };
 
 export type CanonicalEntityBase = {

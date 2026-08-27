@@ -1,5 +1,17 @@
 # Troubleshooting
 
+## Spending.gov.ua intermittently returns `fetch failed`
+
+- **Error:** A small automatic payment-enrichment batch succeeds for most contracts but reports `fetch failed` for one contract.
+- **Cause:** The public Spending endpoint occasionally closes or delays an individual request; a single-attempt client treated this transient network event as a final result.
+- **Fix:** Retry network errors, HTTP 429, and HTTP 5xx up to four times with quadratic backoff. Keep non-retryable 4xx responses explicit and leave every contract eligible for the next daily check.
+
+## Analytics cron times out after queue batching and Spending are enabled together
+
+- **Error:** The authenticated `/api/cron/analytics` request reaches the 295–300 second timeout during a large reclassification backlog.
+- **Cause:** Discovery, control feeds, SharePoint workspace refresh, multi-batch tender import, and Spending enrichment competed for one Function duration. The queue itself was durable, but the combined wall time could exceed the invocation limit.
+- **Fix:** Run discovery/control feeds/SharePoint in `/api/cron/analytics`, queue import/reclassification in `/api/cron/analytics-import`, and Spending enrichment in hourly `/api/cron/spending`. The two analytics jobs run independently every five minutes; the import job has a 70-second budget. Queue leases and cursors preserve completed work between invocations.
+
 ## Finance waits for SharePoint and Prozorro before it can render
 
 - **Error:** `/?workspace=finance` spends many seconds on «Збираємо дані · SharePoint і Prozorro», then shows a second financial loader.
@@ -282,3 +294,63 @@
 - **Fix:** повернути спільний кеш, але **ключем зробити час зміни файлу** — `unstable_cache(fn, ["...", lastModifiedDateTime])`. Перевірка мітки коштує ~150 мс і робиться завжди, а розбір ділиться між екземплярами. Змінили файл — інша мітка, інший ключ, свіжий розбір. Миттєвість збережена, повторний розбір зник.
 - **Тримати обидва рівні:** пам'ять процесу для теплого екземпляра + спільний кеш для холодного.
 - **Результат:** дашборд 9–14 с → 5–7 с, сторінка проєктів → 0,6–2,3 с. Те, що лишилось, — це переважно 3,2 МБ відповіді й очікування живого пульсу Prozorro, а не SharePoint.
+
+## `as const` створив readonly tuple у нормалізаторі правил
+
+- **Error:** TypeScript `TS4104`: readonly tuple не можна додати до масиву mutable tuples.
+- **Cause:** `.map(() => [field, value] as const)` звузив елемент до readonly-типу, а наступна обробка очікувала змінюваний `[MonitoringTextField, unknown]`.
+- **Fix:** задати тип результату без readonly через `.map<[MonitoringTextField, unknown]>(...)`. Це зберігає точний тип поля без конфлікту мутабельності.
+
+## Читання моніторингу повторно запускало всю міграцію
+
+- **Симптом:** перше відкриття нової сторінки моніторингу тривало 40–50 секунд, хоча сама вибірка містила лише десятки рядків.
+- **Причина:** `GET /api/monitoring-v2` викликав `ensureAnalyticsV2Schema()`. У serverless кожен холодний екземпляр послідовно виконував усі SQL-оператори 654-рядкової ідемпотентної міграції перед звичайним читанням.
+- **Fix:** міграція лишається у фоновому синхронізаторі, а read-only endpoint читає вже підготовлену схему. Після цього повне відкриття сторінки разом із головним дашбордом займає близько 6 секунд, а не майже хвилину.
+
+## Vercel CLI 48 не підтримує фільтри історичних логів
+
+- **Error:** `vercel logs ... --since 2h --level error --no-follow` завершується з `unknown or unexpected option: --level`.
+- **Cause:** у Vercel CLI 48 команда `logs` показує лише нові runtime-події до п'яти хвилин і приймає фактично тільки `--json`; параметри `--since`, `--level` та `--no-follow` у цій версії відсутні.
+- **Fix:** запустити `npx vercel logs <deployment-url> --json`, відтворити запит окремо й фільтрувати JSON локально; для завершення live-сеансу надіслати `Ctrl-C`.
+
+## Повноекранний «Збираємо дані» перед моніторингом
+
+- **Error**: пряме відкриття `?view=market` щоразу показувало повноекранний індикатор і чекало SharePoint перед появою моніторингу Prozorro.
+- **Cause**: кореневий клієнтський дашборд безумовно завантажував важкий `/api/dashboard`, хоча моніторинг, аналітика, проєкти та робоча черга мають власні API і не використовують цей payload.
+- **Fix**: серверна сторінка одразу маршрутизує незалежні модулі у легку оболонку з уже перевіреною роллю користувача; важкий dashboard лишився тільки для головної та «Тендерів команди». Останній успішний зріз моніторингу коротко зберігається у `sessionStorage` і показується миттєво, поки у фоні приходить свіже оновлення.
+
+## Spending.gov.ua інколи повертає `fetch failed`
+
+- **Симптом:** один із договорів у фоновому збагаченні не перевірявся через короткий мережевий збій, хоча інші договори того самого запуску оброблялися.
+- **Причина:** публічний API Spending або мережевий маршрут може тимчасово не відповісти; одиничний запит без повтору перетворював транзитну помилку на помилку всього запису.
+- **Fix:** запити мають до чотирьох спроб із наростаючою затримкою для мережевих помилок, HTTP 429 та 5xx. Постійні 4xx не повторюються, щоб не маскувати некоректні параметри.
+
+## Аналітика чекала десятки секунд після відкриття
+
+- **Симптом:** оболонка сторінки зʼявлялася одразу, але показники, матриця та деталізація будувалися близько 40 секунд.
+- **Причина:** рушій для кожного постачальника, замовника та пари заново фільтрував усі участі, перемоги й договори. Це давало квадратичне зростання часу; додатково в БД бракувало зворотних індексів за `procurement_id`.
+- **Fix:** участі, перемоги, договори й деталізація групуються за один прохід через `Map`; пошук переможців і пропозицій виконується через індексовані ключі. Для таблиць звʼязків додано індекси за закупівлею та договором.
+
+## Моніторинг завершувався HTTP 504
+
+- **Симптом:** `/api/monitoring-v2` обривався через 60 секунд навіть для сторінки на 50 рядків.
+- **Причина:** lateral-вибірка шукала предмет закупівлі за `analytics_items.lot_id` для кожного лота, але індексу за `lot_id` не було. PostgreSQL багаторазово перечитував велику таблицю предметів.
+- **Fix:** додано індекси за `lot_id`, кореневою закупівлею та останніми записами моніторингу. Контрольний продакшн-запит скоротився з 60,3 с до 2,4 с.
+
+## Робоча черга повторно виконувала міграцію схеми
+
+- **Симптом:** `/api/tender-workspace` відкривався приблизно за 11,8 секунди.
+- **Причина:** звичайний GET перед читанням щоразу запускав повну ідемпотентну міграцію аналітичної БД.
+- **Fix:** міграція виконується фоновим імпортом, а read-only endpoint лише читає підготовлені таблиці. Контрольний продакшн-запит скоротився до 1,45 с.
+
+## API аналітики повертав 12 МБ зайвих даних
+
+- **Симптом:** навіть після прискорення SQL сторінка довго чекала завантаження великої JSON-відповіді.
+- **Причина:** API повертав тисячі детальних записів основних замовників для кожного контрагента, хоча інтерфейс показує лише першого; дублювалися також повні списки постачальників і замовників поряд із легкими фасетами.
+- **Fix:** у зведенні лишається тільки лідер кожного рейтингу, для фільтрів використовуються компактні фасети, а повторне відкриття показує останній успішний зріз і тихо оновлює його у фоні.
+
+## Кеш у памʼяті не працював між Vercel Functions
+
+- **Симптом:** два однакові послідовні запити до аналітики обидва повністю перераховували дані.
+- **Причина:** локальний `Map` належить одному екземпляру функції, а Vercel може скерувати наступний запит на інший екземпляр.
+- **Fix:** відповідь кешується у Vercel Runtime Cache з коротким TTL та тегом інвалідації. Контрольний повторний запит скоротився приблизно з 10,1 с до 2,8 с; у браузері попередній зріз зʼявляється одразу.

@@ -171,6 +171,43 @@ export async function analyticsTenderIdsMissingPublication(datasetId: string, li
   return rows.map((row) => row.id);
 }
 
+export type AnalyticsControlMode = "recent-30-days" | "contracts" | "full-history";
+
+/** Return a stable ID-ordered page for a resumable daily/monthly control pass. */
+export async function analyticsTenderIdsForControl(
+  datasetId: string,
+  mode: AnalyticsControlMode,
+  afterId: string | null,
+  limit = 100,
+) {
+  const sql = getAnalyticsSql();
+  if (!sql) return [];
+  const cursor = afterId && afterId !== "complete" ? afterId : "";
+  const rows = mode === "recent-30-days"
+    ? await sql`
+        select p.id from analytics_procurements p
+        join analytics_dataset_procurements dp on dp.procurement_id = p.id
+        where dp.dataset_id = ${datasetId} and p.id > ${cursor}
+          and (p.published_at >= now() - interval '30 days' or p.source_modified_at >= now() - interval '30 days')
+        order by p.id asc limit ${limit}
+      `
+    : mode === "contracts"
+      ? await sql`
+          select distinct p.id from analytics_procurements p
+          join analytics_dataset_procurements dp on dp.procurement_id = p.id
+          join analytics_contracts c on c.procurement_id = p.id
+          where dp.dataset_id = ${datasetId} and p.id > ${cursor}
+          order by p.id asc limit ${limit}
+        `
+      : await sql`
+          select p.id from analytics_procurements p
+          join analytics_dataset_procurements dp on dp.procurement_id = p.id
+          where dp.dataset_id = ${datasetId} and p.id > ${cursor}
+          order by p.id asc limit ${limit}
+        `;
+  return (rows as unknown as Array<{ id: string }>).map((row) => row.id);
+}
+
 export async function monitoringAnalyticsSyncSummary() {
   const sql = getAnalyticsSql();
   if (!sql) return null;
@@ -198,7 +235,7 @@ export async function monitoringAnalyticsSyncSummary() {
 }
 
 /** One-time cleanup after tightening SmartTender's publication-day boundary. */
-export async function ensureMonitoringDiscoveryVersion(version: string) {
+export async function ensureMonitoringDiscoveryVersion(version: string, resetMembership = false) {
   const sql = getAnalyticsSql();
   if (!sql) throw new Error("DATABASE_URL is required");
   const streamKey = `monitoring-discovery-version:${version}`;
@@ -207,11 +244,37 @@ export async function ensureMonitoringDiscoveryVersion(version: string) {
     values (${streamKey}, ${version}, now()) on conflict do nothing returning stream_key
   ` as unknown[];
   if (!rows.length) return false;
-  await sql`delete from analytics_sync_queue where scope_mode = 'monitoring'`;
-  await sql`delete from analytics_dataset_procurements where dataset_id = 'analytics-v2-monitoring'`;
+  await sql`update analytics_sync_state set cursor_value = null where stream_key = 'monitoring-discovery'`;
+  // A rule change must reclassify existing membership too, not only tenders
+  // discovered after the new version was published. The queue upsert is
+  // idempotent and preserves higher priority refreshes already waiting.
   await sql`
-    update analytics_datasets set status = 'building', coverage = '{}'::jsonb, updated_at = now()
-    where id = 'analytics-v2-monitoring'
+    insert into analytics_sync_queue (
+      dataset_id, tender_id, scope_mode, direction, source_name, filter_definition, priority
+    )
+    select 'analytics-v2-monitoring', dp.procurement_id, 'monitoring', null,
+      'Official Prozorro API · automatic monitoring sync',
+      '{"source":"monitoring-rules","reason":"rule-version-reclassification"}'::jsonb, 1
+    from analytics_dataset_procurements dp
+    where dp.dataset_id = 'analytics-v2-monitoring'
+    on conflict (dataset_id, tender_id) do update set
+      scope_mode = excluded.scope_mode,
+      source_name = excluded.source_name,
+      filter_definition = excluded.filter_definition,
+      priority = case
+        when analytics_sync_queue.filter_definition->>'reason' = 'rule-version-reclassification'
+          then excluded.priority
+        else greatest(analytics_sync_queue.priority, excluded.priority)
+      end,
+      available_at = least(analytics_sync_queue.available_at, now()),
+      updated_at = now()
   `;
+  if (resetMembership) {
+    await sql`delete from analytics_dataset_procurements where dataset_id = 'analytics-v2-monitoring'`;
+    await sql`
+      update analytics_datasets set status = 'building', coverage = '{}'::jsonb, updated_at = now()
+      where id = 'analytics-v2-monitoring'
+    `;
+  }
   return true;
 }

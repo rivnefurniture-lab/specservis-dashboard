@@ -113,9 +113,21 @@ export type AnalyticsV2Filters = {
   expectedAmountMax?: number | null;
   minParticipants?: number | null;
   maxParticipants?: number | null;
+  lowestBidSupplierIds?: string[];
+  lowestBidAmountMin?: number | null;
+  lowestBidAmountMax?: number | null;
   lowestRejected?: boolean | null;
+  rejectionReasonQuery?: string | null;
   winnerSupplierIds?: string[];
+  awardAmountMin?: number | null;
+  awardAmountMax?: number | null;
   contractPresence?: boolean | null;
+  originalContractAmountMin?: number | null;
+  originalContractAmountMax?: number | null;
+  currentContractAmountMin?: number | null;
+  currentContractAmountMax?: number | null;
+  completedContractAmountMin?: number | null;
+  completedContractAmountMax?: number | null;
   paidPresence?: boolean | null;
   changesPresence?: boolean | null;
   ourStatuses?: string[];
@@ -143,6 +155,8 @@ export type AnalyticsV2Metrics = {
   awardAmount: CurrencyAggregate[];
   originalAmount: CurrencyAggregate[];
   currentAmount: CurrencyAggregate[];
+  completedAmount: CurrencyAggregate[];
+  earlyTerminatedAmount: CurrencyAggregate[];
   paidAmount: CurrencyAggregate[];
   winRate: number | null;
   contractConversion: number | null;
@@ -192,8 +206,20 @@ export type AnalyticsV2DrilldownRow = {
   won: boolean;
   bid: AnalyticsMoney | null;
   award: AnalyticsMoney | null;
+  bidId: string | null;
+  awardId: string | null;
   contractIds: string[];
   contractStatuses: string[];
+  contracts: Array<{
+    id: string;
+    number: string | null;
+    status: string;
+    signedAt: string | null;
+    hasChanges: boolean | null;
+    original: AnalyticsMoney;
+    current: AnalyticsMoney;
+    paid: AnalyticsMoney;
+  }>;
   originalAmount: CurrencyAggregate[];
   currentAmount: CurrencyAggregate[];
   paidAmount: CurrencyAggregate[];
@@ -264,8 +290,18 @@ function includesText(value: string | null | undefined, query?: string | null) {
 
 function selectedParty(id: string, name: string, values?: string[]) {
   if (!values?.length) return true;
-  const normalizedName = name.toLocaleLowerCase("uk-UA");
-  return values.some((value) => value === id || normalizedName.includes(value.toLocaleLowerCase("uk-UA")));
+  const normalize = (value: string) => value.toLocaleLowerCase("uk-UA").replace(/[^\p{L}\p{N}]+/gu, "");
+  const normalizedId = normalize(id);
+  const normalizedIdentifier = normalize(id.split(":").at(-1) ?? id);
+  const normalizedName = normalize(name);
+  return values.some((value) => {
+    const query = normalize(value);
+    return value === id || Boolean(query) && (
+      normalizedId === query
+      || normalizedIdentifier === query
+      || normalizedName.includes(query)
+    );
+  });
 }
 
 function amountInRange(value: number | null | undefined, minimum?: number | null, maximum?: number | null) {
@@ -310,6 +346,8 @@ function latestBy<T>(rows: T[], identity: (row: T) => string, timestamp: (row: T
 
 function metrics(source: MetricSource): AnalyticsV2Metrics {
   const terminated = source.contracts.filter((contract) => contract.status === "terminated");
+  const completed = terminated.filter((contract) => contract.terminationType === "completed");
+  const earlyTerminated = terminated.filter((contract) => contract.terminationType === "terminated");
   const competitiveContracts = source.contracts.filter((contract) => contract.competitive);
   return {
     participations: source.participations.length,
@@ -319,13 +357,15 @@ function metrics(source: MetricSource): AnalyticsV2Metrics {
     competitiveContracts: competitiveContracts.length,
     activeContracts: source.contracts.filter((contract) => contract.status === "active").length,
     terminatedContracts: terminated.length,
-    completedContracts: terminated.filter((contract) => contract.terminationType === "completed").length,
-    earlyTerminatedContracts: terminated.filter((contract) => contract.terminationType === "terminated").length,
+    completedContracts: completed.length,
+    earlyTerminatedContracts: earlyTerminated.length,
     unknownTerminations: terminated.filter((contract) => contract.terminationType == null).length,
     bidAmount: moneyTotals(source.participations.map((item) => ({ amount: item.amount, currency: item.currency }))),
     awardAmount: moneyTotals(source.wins.map((item) => ({ amount: item.amount, currency: item.currency }))),
     originalAmount: moneyTotals(source.contracts.map((item) => ({ amount: item.originalAmount, currency: item.originalCurrency ?? item.currency }))),
     currentAmount: moneyTotals(source.contracts.map((item) => ({ amount: item.currentAmount, currency: item.currentCurrency ?? item.currency }))),
+    completedAmount: moneyTotals(completed.map((item) => ({ amount: item.currentAmount, currency: item.currentCurrency ?? item.currency }))),
+    earlyTerminatedAmount: moneyTotals(earlyTerminated.map((item) => ({ amount: item.currentAmount, currency: item.currentCurrency ?? item.currency }))),
     paidAmount: moneyTotals(source.contracts.map((item) => ({ amount: item.paidAmount, currency: item.paidCurrency ?? item.currency }))),
     winRate: ratio(source.wins.length, source.participations.length),
     contractConversion: ratio(competitiveContracts.length, source.wins.length),
@@ -337,32 +377,29 @@ function metrics(source: MetricSource): AnalyticsV2Metrics {
 
 function partyRows(source: MetricSource, party: "supplier" | "buyer") {
   const identities = new Map<string, string>();
-  for (const item of [...source.participations, ...source.wins]) {
-    identities.set(
-      party === "supplier" ? item.supplierId : item.tender.buyerId,
-      party === "supplier" ? item.supplierName : item.tender.buyerName,
-    );
+  const grouped = new Map<string, MetricSource>();
+  const add = <T extends Participation | Win | Contract>(kind: keyof MetricSource, item: T, id: string, name: string) => {
+    identities.set(id, name);
+    const group = grouped.get(id) ?? { participations: [], wins: [], contracts: [] };
+    if (kind === "participations") group.participations.push(item as Participation);
+    else if (kind === "wins") group.wins.push(item as Win);
+    else group.contracts.push(item as Contract);
+    grouped.set(id, group);
+  };
+  for (const item of source.participations) {
+    add("participations", item, party === "supplier" ? item.supplierId : item.tender.buyerId, party === "supplier" ? item.supplierName : item.tender.buyerName);
+  }
+  for (const item of source.wins) {
+    add("wins", item, party === "supplier" ? item.supplierId : item.tender.buyerId, party === "supplier" ? item.supplierName : item.tender.buyerName);
   }
   for (const item of source.contracts) {
-    identities.set(
-      party === "supplier" ? item.supplierId : item.buyerId ?? item.tender.buyerId,
-      party === "supplier" ? item.supplierName : item.buyerName ?? item.tender.buyerName,
-    );
+    add("contracts", item, party === "supplier" ? item.supplierId : item.buyerId ?? item.tender.buyerId, party === "supplier" ? item.supplierName : item.buyerName ?? item.tender.buyerName);
   }
-  return [...identities.entries()].map(([id, name]) => {
-    const matches = (item: Participation | Win | Contract) => party === "supplier"
-      ? item.supplierId === id
-      : ("tender" in item && ("buyerId" in item ? item.buyerId ?? item.tender.buyerId : item.tender.buyerId)) === id;
-    return {
-      id,
-      name,
-      ...metrics({
-        participations: source.participations.filter(matches),
-        wins: source.wins.filter(matches),
-        contracts: source.contracts.filter(matches),
-      }),
-    };
-  }).sort((left, right) => right.signedContracts - left.signedContracts
+  return [...identities.entries()].map(([id, name]) => ({
+    id,
+    name,
+    ...metrics(grouped.get(id) ?? { participations: [], wins: [], contracts: [] }),
+  })).sort((left, right) => right.signedContracts - left.signedContracts
     || right.wins - left.wins
     || right.participations - left.participations
     || left.name.localeCompare(right.name));
@@ -553,22 +590,31 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
     biddersByLot.set(bid.lotId, rows);
   }
   const activeAwardsByLot = new Map<string, AnalyticsAwardInput[]>();
+  const awardsByLot = new Map<string, AnalyticsAwardInput[]>();
+  for (const award of input.awards) {
+    const rows = awardsByLot.get(award.lotId) ?? [];
+    rows.push(award);
+    awardsByLot.set(award.lotId, rows);
+  }
   for (const award of input.awards.filter((item) => item.status === ACTIVE_AWARD)) {
     const rows = activeAwardsByLot.get(award.lotId) ?? [];
     rows.push(award);
     activeAwardsByLot.set(award.lotId, rows);
   }
-  const rejectedLowestLots = new Set<string>();
+  const lowestBidsByLot = new Map<string, AnalyticsBidInput[]>();
+  const rejectedLowestByLot = new Map<string, AnalyticsAwardInput[]>();
   for (const [lotId, bids] of biddersByLot) {
     const known = bids.filter((bid) => bid.amount != null && Number.isFinite(bid.amount));
     if (!known.length) continue;
     const lowest = Math.min(...known.map((bid) => bid.amount as number));
-    const lowestSuppliers = new Set(known.filter((bid) => bid.amount === lowest).map((bid) => bid.supplierId));
-    const rejected = input.awards.some((award) => award.lotId === lotId
-      && lowestSuppliers.has(award.supplierId)
+    const lowestBids = known.filter((bid) => bid.amount === lowest);
+    lowestBidsByLot.set(lotId, lowestBids);
+    const lowestSuppliers = new Set(lowestBids.map((bid) => bid.supplierId));
+    const rejected = (awardsByLot.get(lotId) ?? []).filter((award) =>
+      lowestSuppliers.has(award.supplierId)
       && award.status !== ACTIVE_AWARD
       && Boolean(award.rejectionReason));
-    if (rejected) rejectedLowestLots.add(lotId);
+    if (rejected.length) rejectedLowestByLot.set(lotId, rejected);
   }
   const contractsByTender = new Map<string, AnalyticsContractInput[]>();
   const signedContractCandidates = latestBy(
@@ -605,6 +651,13 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
         const knownNoChanges = contracts.length === 0 || contracts.every((contract) => contract.hasChanges === false);
         if (filters.changesPresence ? !hasChanges : !knownNoChanges) return false;
       }
+      if ((filters.originalContractAmountMin != null || filters.originalContractAmountMax != null)
+        && !contracts.some((contract) => amountInRange(contract.originalAmount, filters.originalContractAmountMin, filters.originalContractAmountMax))) return false;
+      if ((filters.currentContractAmountMin != null || filters.currentContractAmountMax != null)
+        && !contracts.some((contract) => amountInRange(contract.currentAmount, filters.currentContractAmountMin, filters.currentContractAmountMax))) return false;
+      if ((filters.completedContractAmountMin != null || filters.completedContractAmountMax != null)
+        && !contracts.some((contract) => contract.terminationType === "completed"
+          && amountInRange(contract.paidAmount, filters.completedContractAmountMin, filters.completedContractAmountMax))) return false;
       return true;
     })()
   );
@@ -616,12 +669,21 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
     if (filters.minParticipants != null && participantCount < filters.minParticipants) return false;
     if (filters.maxParticipants != null && participantCount > filters.maxParticipants) return false;
     if (!amountInRange(lot.expectedAmount ?? tender?.expectedAmount, filters.expectedAmountMin, filters.expectedAmountMax)) return false;
+    const lowestBids = lowestBidsByLot.get(lot.id) ?? [];
+    if (filters.lowestBidSupplierIds?.length
+      && !lowestBids.some((bid) => selectedParty(bid.supplierId, bid.supplierName, filters.lowestBidSupplierIds))) return false;
+    if ((filters.lowestBidAmountMin != null || filters.lowestBidAmountMax != null)
+      && !lowestBids.some((bid) => amountInRange(bid.amount, filters.lowestBidAmountMin, filters.lowestBidAmountMax))) return false;
     if (filters.lowestRejected != null) {
       if (!tender?.awardDataComplete) return false;
-      if (rejectedLowestLots.has(lot.id) !== filters.lowestRejected) return false;
+      if (rejectedLowestByLot.has(lot.id) !== filters.lowestRejected) return false;
     }
+    if (filters.rejectionReasonQuery
+      && !(rejectedLowestByLot.get(lot.id) ?? []).some((award) => includesText(award.rejectionReason, filters.rejectionReasonQuery))) return false;
     if (filters.winnerSupplierIds?.length
       && !(activeAwardsByLot.get(lot.id) ?? []).some((award) => selectedParty(award.supplierId, award.supplierName, filters.winnerSupplierIds))) return false;
+    if ((filters.awardAmountMin != null || filters.awardAmountMax != null)
+      && !(activeAwardsByLot.get(lot.id) ?? []).some((award) => amountInRange(award.amount, filters.awardAmountMin, filters.awardAmountMax))) return false;
     return true;
   });
   const allLotTenderIds = new Set(input.lots.map((lot) => lot.tenderId));
@@ -723,23 +785,27 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
   const source = { participations, wins, contracts };
   const suppliers = partyRows(source, "supplier");
   const buyers = partyRows(source, "buyer");
+  const supplierNames = new Map(suppliers.map((item) => [item.id, item.name]));
+  const buyerNames = new Map(buyers.map((item) => [item.id, item.name]));
 
-  const pairKeys = new Set<string>();
-  participations.forEach((item) => pairKeys.add(key(item.supplierId, item.tender.buyerId)));
-  wins.forEach((item) => pairKeys.add(key(item.supplierId, item.tender.buyerId)));
-  contracts.forEach((item) => pairKeys.add(key(item.supplierId, item.buyerId ?? item.tender.buyerId)));
-  const matrix = [...pairKeys].map((pair): AnalyticsV2MatrixRow => {
+  const pairGroups = new Map<string, MetricSource>();
+  const addPair = <T extends Participation | Win | Contract>(kind: keyof MetricSource, item: T, pair: string) => {
+    const group = pairGroups.get(pair) ?? { participations: [], wins: [], contracts: [] };
+    if (kind === "participations") group.participations.push(item as Participation);
+    else if (kind === "wins") group.wins.push(item as Win);
+    else group.contracts.push(item as Contract);
+    pairGroups.set(pair, group);
+  };
+  participations.forEach((item) => addPair("participations", item, key(item.supplierId, item.tender.buyerId)));
+  wins.forEach((item) => addPair("wins", item, key(item.supplierId, item.tender.buyerId)));
+  contracts.forEach((item) => addPair("contracts", item, key(item.supplierId, item.buyerId ?? item.tender.buyerId)));
+  const matrix = [...pairGroups.entries()].map(([pair, pairSource]): AnalyticsV2MatrixRow => {
     const [supplierId, buyerId] = pair.split("\u0000");
-    const pairSource = {
-      participations: participations.filter((item) => item.supplierId === supplierId && item.tender.buyerId === buyerId),
-      wins: wins.filter((item) => item.supplierId === supplierId && item.tender.buyerId === buyerId),
-      contracts: contracts.filter((item) => item.supplierId === supplierId && (item.buyerId ?? item.tender.buyerId) === buyerId),
-    };
     return {
       supplierId,
-      supplierName: suppliers.find((item) => item.id === supplierId)?.name ?? supplierId,
+      supplierName: supplierNames.get(supplierId) ?? supplierId,
       buyerId,
-      buyerName: buyers.find((item) => item.id === buyerId)?.name ?? buyerId,
+      buyerName: buyerNames.get(buyerId) ?? buyerId,
       tenders: new Set([
         ...pairSource.participations.map((item) => item.tender.id),
         ...pairSource.wins.map((item) => item.tender.id),
@@ -754,24 +820,37 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
     };
   }).sort((left, right) => right.signedContracts - left.signedContracts || right.wins - left.wins || left.supplierName.localeCompare(right.supplierName));
 
-  const drillKeys = new Set<string>();
-  participations.forEach((item) => drillKeys.add(key(item.supplierId, item.lotId)));
-  wins.forEach((item) => drillKeys.add(key(item.supplierId, item.lotId)));
-  contracts.forEach((item) => drillKeys.add(key(item.supplierId, item.lotId ?? `contract:${item.id}`)));
+  const participationByDrillKey = new Map<string, Participation>();
+  const winByDrillKey = new Map<string, Win>();
+  const contractsByDrillKey = new Map<string, Contract[]>();
+  participations.forEach((item) => participationByDrillKey.set(key(item.supplierId, item.lotId), item));
+  wins.forEach((item) => winByDrillKey.set(key(item.supplierId, item.lotId), item));
+  contracts.forEach((item) => {
+    const rowKey = key(item.supplierId, item.lotId ?? `contract:${item.id}`);
+    const rows = contractsByDrillKey.get(rowKey) ?? [];
+    rows.push(item);
+    contractsByDrillKey.set(rowKey, rows);
+  });
+  const drillKeys = new Set([...participationByDrillKey.keys(), ...winByDrillKey.keys(), ...contractsByDrillKey.keys()]);
+  const latestAwardsByLotSupplier = new Map(latestAwards.map((award) => [key(award.lotId, award.supplierId), award]));
+  const activeAwardKeys = new Set(latestAwards.filter((award) => award.status === ACTIVE_AWARD).map((award) => key(award.lotId, award.supplierId)));
+  const lotBidsByLot = new Map<string, AnalyticsBidInput[]>();
+  for (const bid of allLatestBids) {
+    const rows = lotBidsByLot.get(bid.lotId) ?? [];
+    rows.push(bid);
+    lotBidsByLot.set(bid.lotId, rows);
+  }
   const drilldown = [...drillKeys].map((rowKey): AnalyticsV2DrilldownRow => {
     const [supplierId, lotIdentity] = rowKey.split("\u0000");
-    const participation = participations.find((item) => item.supplierId === supplierId && item.lotId === lotIdentity);
-    const win = wins.find((item) => item.supplierId === supplierId && item.lotId === lotIdentity);
-    const rowContracts = contracts.filter((item) => item.supplierId === supplierId
-      && (item.lotId === lotIdentity || `contract:${item.id}` === lotIdentity));
+    const participation = participationByDrillKey.get(rowKey);
+    const win = winByDrillKey.get(rowKey);
+    const rowContracts = contractsByDrillKey.get(rowKey) ?? [];
     const tender = participation?.tender ?? win?.tender ?? rowContracts[0].tender;
     const lot = lotsById.get(lotIdentity);
     const supplierName = participation?.supplierName ?? win?.supplierName ?? rowContracts[0].supplierName;
-    const rejectedAward = latestAwards.find((award) => award.lotId === lotIdentity
-      && award.supplierId === supplierId
-      && award.status !== ACTIVE_AWARD
-      && Boolean(award.rejectionReason));
-    const lotBids = allLatestBids.filter((bid) => bid.lotId === lotIdentity);
+    const latestSupplierAward = latestAwardsByLotSupplier.get(key(lotIdentity, supplierId));
+    const rejectedAward = latestSupplierAward?.status !== ACTIVE_AWARD && latestSupplierAward?.rejectionReason ? latestSupplierAward : undefined;
+    const lotBids = lotBidsByLot.get(lotIdentity) ?? [];
     return {
       key: rowKey,
       tenderId: tender.id,
@@ -794,9 +873,7 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
         supplierId: bid.supplierId,
         supplierName: bid.supplierName,
         bid: { amount: bid.amount, currency: normalizeCurrency(bid.currency) },
-        won: latestAwards.some((award) => award.lotId === lotIdentity
-          && award.supplierId === bid.supplierId
-          && award.status === ACTIVE_AWARD),
+        won: activeAwardKeys.has(key(lotIdentity, bid.supplierId)),
       })).sort((left, right) => (left.bid.amount ?? Number.POSITIVE_INFINITY) - (right.bid.amount ?? Number.POSITIVE_INFINITY)
         || left.supplierName.localeCompare(right.supplierName)),
       lowestRejected: rejectedAward ? true : tender.awardDataComplete ? false : null,
@@ -804,8 +881,29 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
       won: Boolean(win),
       bid: participation ? { amount: participation.amount, currency: normalizeCurrency(participation.currency) } : null,
       award: win ? { amount: win.amount, currency: normalizeCurrency(win.currency) } : null,
+      bidId: participation?.id ?? null,
+      awardId: win?.id ?? null,
       contractIds: rowContracts.map((contract) => contract.id),
       contractStatuses: rowContracts.map((contract) => contract.status),
+      contracts: rowContracts.map((contract) => ({
+        id: contract.id,
+        number: contract.contractNumber ?? null,
+        status: contract.status,
+        signedAt: contract.signedAt,
+        hasChanges: contract.hasChanges ?? null,
+        original: {
+          amount: contract.originalAmount,
+          currency: normalizeCurrency(contract.originalCurrency ?? contract.currency),
+        },
+        current: {
+          amount: contract.currentAmount,
+          currency: normalizeCurrency(contract.currentCurrency ?? contract.currency),
+        },
+        paid: {
+          amount: contract.paidAmount,
+          currency: normalizeCurrency(contract.paidCurrency ?? contract.currency),
+        },
+      })),
       originalAmount: moneyTotals(rowContracts.map((contract) => ({ amount: contract.originalAmount, currency: contract.originalCurrency ?? contract.currency }))),
       currentAmount: moneyTotals(rowContracts.map((contract) => ({ amount: contract.currentAmount, currency: contract.currentCurrency ?? contract.currency }))),
       paidAmount: moneyTotals(rowContracts.map((contract) => ({ amount: contract.paidAmount, currency: contract.paidCurrency ?? contract.currency }))),

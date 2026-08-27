@@ -316,7 +316,6 @@ export async function importTenderWorkbookRows(input: TenderWorkbookImportRow[])
 export async function loadTenderWorkspace(account: DashboardAccount): Promise<TenderWorkspacePayload | null> {
   const access = workspaceAccess(account);
   if (!access) return null;
-  await ensureAnalyticsV2Schema();
   const sql = getAnalyticsSql();
   if (!sql) throw new Error("DATABASE_URL is required");
   const rows = await sql`
