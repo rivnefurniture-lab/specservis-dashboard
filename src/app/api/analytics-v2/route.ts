@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getCache } from "@vercel/functions";
+import { getCache, waitUntil } from "@vercel/functions";
 import { sessionAccount, sessionCookie } from "@/lib/auth";
 import { buildAnalyticsV2, type AnalyticsDateLens, type AnalyticsV2Filters } from "@/lib/analytics-v2-engine";
 import { ensureExpandedAnalyticsRequest, isExpandedDiscovery } from "@/lib/analytics-v2-expanded";
@@ -15,7 +15,7 @@ export const maxDuration = 60;
 const dateLenses = new Set<AnalyticsDateLens>(["publication", "award", "contract"]);
 const directions = new Set(["Капбудівництво", "Сервіс", "Кондиціонування"]);
 const RESPONSE_CACHE_TTL_SECONDS = 60;
-const RESPONSE_CACHE_PENDING_TTL_SECONDS = 15;
+const RESPONSE_CACHE_PENDING_TTL_SECONDS = 300;
 const responseCache = getCache({ namespace: "analytics-v2-responses" });
 
 async function readResponseCache(key: string) {
@@ -261,11 +261,11 @@ export async function GET(request: Request) {
       },
     },
   };
-  await writeResponseCache(
+  waitUntil(writeResponseCache(
     responseCacheKey,
     payload,
     complete ? RESPONSE_CACHE_TTL_SECONDS : RESPONSE_CACHE_PENDING_TTL_SECONDS,
-  );
+  ));
   const serializationStartedAt = performance.now();
   const response = NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
   const serializationMs = performance.now() - serializationStartedAt;
