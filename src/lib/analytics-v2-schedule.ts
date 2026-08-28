@@ -2,6 +2,21 @@ export type AnalyticsDiscoveryWindow = "today" | "yesterday" | "historical";
 export type AnalyticsControlWindow = "recent-30-days" | "contracts" | "full-history";
 
 export const ANALYTICS_CRON_INTERVAL_MINUTES = 5;
+export const DEFAULT_ANALYTICS_HISTORY_FROM = "2023-01-01";
+
+function validIsoDay(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/** Resolve a stable inclusive boundary for the historical analytics crawl. */
+export function analyticsHistoryStart(configured: string | null | undefined, now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  const candidate = configured?.trim() ?? "";
+  if (validIsoDay(candidate) && candidate <= today) return candidate;
+  return DEFAULT_ANALYTICS_HISTORY_FROM <= today ? DEFAULT_ANALYTICS_HISTORY_FROM : today;
+}
 
 const discoveryWindows: readonly AnalyticsDiscoveryWindow[] = [
   "today",

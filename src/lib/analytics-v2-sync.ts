@@ -10,7 +10,12 @@ import { persistAnalyticsV2 } from "@/lib/analytics-v2-persist";
 import { classifyMonitoringDataset } from "@/lib/monitoring-classification";
 import { loadActiveMonitoringRuleSet } from "@/lib/monitoring-rule-store";
 import { ensureAnalyticsV2Schema } from "@/lib/analytics-v2-migrate";
-import { analyticsControlWindow, analyticsDiscoveryWindow, type AnalyticsControlWindow } from "@/lib/analytics-v2-schedule";
+import {
+  analyticsControlWindow,
+  analyticsDiscoveryWindow,
+  analyticsHistoryStart,
+  type AnalyticsControlWindow,
+} from "@/lib/analytics-v2-schedule";
 import type { ProzorroAnalyticsDataset } from "@/lib/analytics-v2-schema";
 import {
   acquireAnalyticsSyncLease,
@@ -314,8 +319,10 @@ async function syncDiscovery(): Promise<SyncPart> {
   const imported = 0;
   let cursor = lease.cursor;
   try {
-    const historyDays = integerEnv("ANALYTICS_HISTORY_DAYS", 3_650, 31, 5_000);
-    const oldest = utcDay(historyDays - 1);
+    const oldest = analyticsHistoryStart(process.env.ANALYTICS_HISTORY_FROM);
+    if (cursor && cursor !== "complete" && /^\d{4}-\d{2}-\d{2}$/.test(cursor) && cursor < oldest) {
+      cursor = "complete";
+    }
     const historicalDay = cursor === "complete"
       ? null
       : cursor && /^\d{4}-\d{2}-\d{2}$/.test(cursor) && cursor >= oldest ? cursor : utcDay(2);
@@ -349,7 +356,7 @@ async function syncDiscovery(): Promise<SyncPart> {
       }
       await lease.checkpoint(cursor ?? historicalDay ?? "complete", found.length, 0, { lastDiscoveryDay: day });
     }
-    await lease.succeed(0, 0, { historyDays, lastRunErrors: errors.length });
+    await lease.succeed(0, 0, { historyFrom: oldest, lastRunErrors: errors.length });
     return { stream, busy: false, processed, imported, cursor, errors };
   } catch (error) {
     await lease.fail(error);
