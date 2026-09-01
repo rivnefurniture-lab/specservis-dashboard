@@ -38,12 +38,13 @@
 .headlineGrid span { min-height: 30px; color: var(--owner-muted); font-size: 10px; font-weight: 720; line-height: 1.35; }
 .headlineGrid strong { color: var(--owner-ink); font-size: clamp(24px,2.15vw,36px); line-height: 1; letter-spacing: -.045em; white-space: nowrap; }
 .headlineGrid article > div { display: flex; align-items: center; gap: 6px; }
-.headlineGrid article > div b { padding: 5px 7px; border-radius: 7px; background: rgba(44,152,102,.1); font-size: 11px; }
-.headlineGrid article > div small { color: var(--owner-muted); font-size: 9px; }
+.headlineGrid article > div b { min-width: 70px; padding: 7px 10px; border: 1px solid rgba(34,145,94,.18); border-radius: 9px; background: #e6f5ed; font-size: 13px; font-weight: 840; text-align: center; }
+.headlineGrid article > div b.negative { border-color: rgba(216,112,56,.22); background: #fff0e8; }
+.headlineGrid article > div small { color: var(--owner-muted); font-size: 10px; font-weight: 650; }
 .headlineGrid p { margin: 1px 0 0; color: var(--owner-muted); font-size: 9px; }
 .headlineGrid article:first-child span,.headlineGrid article:first-child p,.headlineGrid article:first-child > div small { color: rgba(255,255,255,.68); }
 .headlineGrid article:first-child strong { color: white; }
-.headlineGrid article:first-child > div b { color: #b8f0d4 !important; background: rgba(87,207,150,.18); }
+.headlineGrid article:first-child > div b { color: #c8f8df !important; border-color: rgba(170,244,208,.22); background: rgba(87,207,150,.2); }
 .historyBlock { padding: 24px 30px 30px; border-top: 1px solid var(--owner-line); background: #f8f9fc; }
 .historyTitle { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; margin-bottom: 15px; }
 .historyTitle > div { display: grid; gap: 5px; }
@@ -61,7 +62,10 @@
 .performanceTable tbody th > i { width: 8px; height: 8px; flex: none; border-radius: 50%; }
 .performanceTable tbody th > em { padding: 3px 6px; border-radius: 6px; color: var(--owner-blue); background: var(--owner-blue-soft); font-size: 8px; font-style: normal; font-weight: 760; }
 .performanceTable tbody td strong { display: block; color: var(--owner-ink); font-size: 13px; }
-.performanceTable tbody td small { display: inline-block; margin-top: 4px; padding: 3px 6px; border-radius: 6px; background: rgba(44,152,102,.08); font-size: 9px; font-weight: 760; }
+.performanceTable tbody td small { display: inline-block; min-width: 56px; margin-top: 5px; padding: 5px 8px; border: 1px solid transparent; border-radius: 7px; font-size: 10px; font-weight: 820; text-align: center; }
+.performanceTable tbody td small.positive { border-color: rgba(34,145,94,.14); background: #e6f5ed; }
+.performanceTable tbody td small.negative { border-color: rgba(216,112,56,.18); background: #fff0e8; }
+.performanceTable tbody td small.muted { background: #f0f1f5; }
 .performanceTable .currentYearRow > * { background: #f1f0fb; }
 .performanceTable .currentYearRow td strong { color: var(--owner-blue); font-size: 15px; }
 .entityBars { display: grid; gap: 12px; margin-top: 18px; }

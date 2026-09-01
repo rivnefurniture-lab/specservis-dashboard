@@ -85,10 +85,10 @@ function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
     </section>
 
     <section className={styles.performanceCard} aria-labelledby="performance-title">
-      <header className={styles.performanceHeader}><div><span>ГОЛОВНЕ ЗА ПЕРІОД</span><h1 id="performance-title">{displayPeriodTitle(currentComparable?.from ?? null, currentComparable?.to ?? null)} {currentPeriod?.to?.slice(0, 4)}</h1><p>Однакові місяці порівнюються з попереднім роком</p></div><div className={styles.scopeNote}><b>{summary.months} місяців</b><span>Оборот без Coca-Cola та AB InBev</span></div></header>
+      <header className={styles.performanceHeader}><div><h1 id="performance-title">{displayPeriodTitle(currentComparable?.from ?? null, currentComparable?.to ?? null)} {currentPeriod?.to?.slice(0, 4)}</h1><p>Показники та зміна до такого самого періоду минулого року</p></div><div className={styles.scopeNote}><b>{summary.months} місяців</b><span>Оборот без Coca-Cola та AB InBev</span></div></header>
       <div className={styles.headlineGrid}>{headlineMetrics.map((metric) => <article key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><div><b className={deltaTone(metric.delta)}>{percent(metric.delta, true)}</b><small>до минулого року</small></div><p>{metric.note}</p></article>)}</div>
       <div className={styles.historyBlock}>
-        <div className={styles.historyTitle}><div><span>4 РОКИ В ОДНОМУ МІСЦІ</span><h2>Як змінювалися показники</h2></div><small>Точні значення · зміна вказана до попереднього року</small></div>
+        <div className={styles.historyTitle}><div><h2>Порівняння за роками</h2></div><small>Під кожним значенням — зміна до попереднього року</small></div>
         <div className={styles.performanceScroll}><table className={styles.performanceTable}><thead><tr><th>Період</th><th>Оборот групи<small>грн</small></th><th>На 1 працівника<small>останній місяць, грн</small></th><th>Середнє на 1 працівника<small>грн</small></th><th>Середня команда<small>FTE</small></th></tr></thead><tbody>{history.map((period, index) => { const previous = history[index - 1]; const metrics = [
           { value: valueCell(period.baseTurnover), delta: previous ? growth(period.baseTurnover, previous.baseTurnover) : null },
           { value: valueCell(period.lastTurnoverPerFte), delta: previous ? growth(period.lastTurnoverPerFte, previous.lastTurnoverPerFte) : null },
