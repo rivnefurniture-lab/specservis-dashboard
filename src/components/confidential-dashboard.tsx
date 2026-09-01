@@ -35,6 +35,7 @@ function periodTitle(from: string | null, to: string | null) {
   if (!from || !to) return "обраний період";
   return from === to ? monthNames[monthIndex(from)] : `${monthNames[monthIndex(from)]}–${monthNames[monthIndex(to)]}`;
 }
+function displayPeriodTitle(from: string | null, to: string | null) { const value = periodTitle(from, to); return `${value.charAt(0).toUpperCase()}${value.slice(1)}`; }
 function valueCell(value: number | null) { return value === null ? "—" : wholeNumber.format(value); }
 
 function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
@@ -69,6 +70,13 @@ function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
     { label: "AB InBev", value: model.months.reduce((total, month) => total + (month.abinbev ?? 0), 0) },
   ];
   const refkeyCash = model.months.reduce((total, month) => total + (month.refkeyCash ?? 0), 0), specservisCash = model.months.reduce((total, month) => total + (month.specservisCash ?? 0), 0);
+  const currentPeriod = history.at(-1) ?? null, priorPeriod = history.at(-2) ?? null;
+  const headlineMetrics = currentPeriod ? [
+    { label: "Оборот групи", value: money(currentPeriod.baseTurnover), note: `За ${summary.months} місяців`, delta: growth(currentPeriod.baseTurnover, priorPeriod?.baseTurnover ?? null) },
+    { label: `Оборот на 1 працівника · ${monthNames[monthIndex(currentPeriod.to)]}`, value: money(currentPeriod.lastTurnoverPerFte), note: "Останній місяць періоду", delta: growth(currentPeriod.lastTurnoverPerFte, priorPeriod?.lastTurnoverPerFte ?? null) },
+    { label: "У середньому на 1 працівника", value: money(currentPeriod.turnoverPerFte), note: `Середнє за ${summary.months} місяців`, delta: growth(currentPeriod.turnoverPerFte, priorPeriod?.turnoverPerFte ?? null) },
+    { label: "Середня кількість працівників", value: currentPeriod.avgFte === null ? "—" : wholeNumber.format(currentPeriod.avgFte), note: "Повних робочих ставок", delta: growth(currentPeriod.avgFte, priorPeriod?.avgFte ?? null) },
+  ] : [];
 
   return <div className={`owner-stack ${styles.financeApp}`}>
     <section className={styles.toolbar} aria-label="Період фінансового огляду">
@@ -77,11 +85,16 @@ function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
     </section>
 
     <section className={styles.performanceCard} aria-labelledby="performance-title">
-      <header className={styles.performanceHeader}><div><span>ГОЛОВНІ ПОКАЗНИКИ</span><h1 id="performance-title">Показники за {periodTitle(currentComparable?.from ?? null, currentComparable?.to ?? null)}</h1><p>Порівнюємо однаковий період з {history.at(0)?.to?.slice(0, 4) ?? "—"} до {history.at(-1)?.to?.slice(0, 4) ?? "—"} року</p></div><div className={styles.scopeNote}><b>{summary.months} місяців</b><span>Оборот без Coca-Cola та AB InBev</span></div></header>
-      <div className={styles.performanceScroll}>
-        <table className={styles.performanceTable}><thead><tr><th>Період</th><th>Оборот групи<small>грн</small></th><th>Оборот на 1 працівника<small>за {monthNames[monthIndex(currentComparable?.to ?? null)]}, грн</small></th><th>Середній оборот на 1 працівника<small>за {summary.months} міс., грн</small></th><th>Середня кількість працівників<small>за {summary.months} міс.</small></th></tr></thead><tbody>{history.map((period, index) => <tr key={period.id} className={`${styles[`yearRow${index}`]} ${index === history.length - 1 ? styles.currentYearRow : ""}`}><th>{compactPeriodLabel(period.from, period.to)}</th><td>{valueCell(period.baseTurnover)}</td><td>{valueCell(period.lastTurnoverPerFte)}</td><td>{valueCell(period.turnoverPerFte)}</td><td>{period.avgFte === null ? "—" : wholeNumber.format(period.avgFte)}</td></tr>)}</tbody></table>
-        <div className={styles.yoyTitle}>Зміна до попереднього року</div>
-        <table className={`${styles.performanceTable} ${styles.yoyTable}`}><thead><tr><th>Період</th><th>Оборот</th><th>Оборот на 1 працівника</th><th>Середній оборот на 1 працівника</th><th>Кількість працівників</th></tr></thead><tbody>{history.map((period, index) => { const previous = history[index - 1]; const metrics = previous ? [growth(period.baseTurnover, previous.baseTurnover), growth(period.lastTurnoverPerFte, previous.lastTurnoverPerFte), growth(period.turnoverPerFte, previous.turnoverPerFte), growth(period.avgFte, previous.avgFte)] : [null, null, null, null]; return <tr key={period.id} className={index === history.length - 1 ? styles.currentYoyRow : ""}><th>{compactPeriodLabel(period.from, period.to)}</th>{metrics.map((metric, metricIndex) => <td key={metricIndex} className={deltaTone(metric)}>{percent(metric, true)}</td>)}</tr>; })}</tbody></table>
+      <header className={styles.performanceHeader}><div><span>ГОЛОВНЕ ЗА ПЕРІОД</span><h1 id="performance-title">{displayPeriodTitle(currentComparable?.from ?? null, currentComparable?.to ?? null)} {currentPeriod?.to?.slice(0, 4)}</h1><p>Однакові місяці порівнюються з попереднім роком</p></div><div className={styles.scopeNote}><b>{summary.months} місяців</b><span>Оборот без Coca-Cola та AB InBev</span></div></header>
+      <div className={styles.headlineGrid}>{headlineMetrics.map((metric) => <article key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><div><b className={deltaTone(metric.delta)}>{percent(metric.delta, true)}</b><small>до минулого року</small></div><p>{metric.note}</p></article>)}</div>
+      <div className={styles.historyBlock}>
+        <div className={styles.historyTitle}><div><span>4 РОКИ В ОДНОМУ МІСЦІ</span><h2>Як змінювалися показники</h2></div><small>Точні значення · зміна вказана до попереднього року</small></div>
+        <div className={styles.performanceScroll}><table className={styles.performanceTable}><thead><tr><th>Період</th><th>Оборот групи<small>грн</small></th><th>На 1 працівника<small>останній місяць, грн</small></th><th>Середнє на 1 працівника<small>грн</small></th><th>Середня команда<small>FTE</small></th></tr></thead><tbody>{history.map((period, index) => { const previous = history[index - 1]; const metrics = [
+          { value: valueCell(period.baseTurnover), delta: previous ? growth(period.baseTurnover, previous.baseTurnover) : null },
+          { value: valueCell(period.lastTurnoverPerFte), delta: previous ? growth(period.lastTurnoverPerFte, previous.lastTurnoverPerFte) : null },
+          { value: valueCell(period.turnoverPerFte), delta: previous ? growth(period.turnoverPerFte, previous.turnoverPerFte) : null },
+          { value: period.avgFte === null ? "—" : wholeNumber.format(period.avgFte), delta: previous ? growth(period.avgFte, previous.avgFte) : null },
+        ]; return <tr key={period.id} className={index === history.length - 1 ? styles.currentYearRow : ""}><th><i style={{ background: entityColors[index] }} />{compactPeriodLabel(period.from, period.to)}{index === history.length - 1 ? <em>зараз</em> : null}</th>{metrics.map((metric, metricIndex) => <td key={metricIndex}><strong>{metric.value}</strong>{index ? <small className={deltaTone(metric.delta)}>{percent(metric.delta, true)}</small> : <small className={styles.muted}>база</small>}</td>)}</tr>; })}</tbody></table></div>
       </div>
     </section>
 
