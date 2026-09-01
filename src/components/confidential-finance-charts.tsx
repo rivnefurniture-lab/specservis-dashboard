@@ -87,7 +87,7 @@ export function CumulativeTurnoverChart({ history }: { history: ComparableTurnov
   const currentPath = series.at(-1)?.cumulativeBaseTurnover.map((value, index) => `${index ? "L" : "M"}${x(index)},${y(value)}`).join(" ") ?? "";
   const areaPath = currentPath ? `${currentPath} L${x(periods.length - 1)},${bottom} L${left},${bottom} Z` : "";
   return <div className={styles.cumulativeChartWrap}>
-    <div className={styles.chartLegend}>{series.map((item, index) => <span key={item.id} className={index === series.length - 1 ? styles.legendCurrent : ""}><i style={{ background: palette[index] }} />{item.label}<b>{money(item.baseTurnover)}</b></span>)}</div>
+    <div className={styles.chartLegend}>{series.map((item, index) => <span key={item.id} className={index === series.length - 1 ? styles.legendCurrent : ""}><i style={{ background: palette[index] }} />{item.label}</span>)}</div>
     <div className={styles.cumulativeCanvas} onMouseLeave={() => setHovered(null)}>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Накопичений оборот за однакові періоди останніх чотирьох років">
         <defs><linearGradient id="finance-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#292477" stopOpacity=".16" /><stop offset="1" stopColor="#292477" stopOpacity="0" /></linearGradient></defs>

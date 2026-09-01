@@ -9,7 +9,7 @@
 .financeState h2 { margin: 0; color: var(--owner-blue); font-size: 18px; }
 .financeState button { display: flex; align-items: center; gap: 8px; padding: 11px 15px; border: 0; border-radius: 11px; color: white; background: var(--owner-blue); cursor: pointer; }
 
-.toolbar { display: grid; grid-template-columns: minmax(210px,1fr) auto auto; align-items: center; gap: 18px; padding: 13px 16px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(255,255,255,.9); box-shadow: 0 10px 28px rgba(31,32,67,.07); backdrop-filter: blur(16px); }
+.toolbar { display: grid; grid-template-columns: minmax(210px,1fr) auto; align-items: center; gap: 18px; padding: 13px 16px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(255,255,255,.9); box-shadow: 0 10px 28px rgba(31,32,67,.07); backdrop-filter: blur(16px); }
 .toolbarTitle { display: flex; align-items: center; gap: 11px; color: var(--owner-blue); }
 .toolbarTitle > span { display: grid; gap: 3px; }
 .toolbarTitle b { color: var(--owner-ink); font-size: 13px; }
@@ -23,6 +23,47 @@
 .periodSwitch .activePeriod { color: white; background: var(--owner-blue); box-shadow: 0 5px 13px rgba(37,33,111,.2); }
 .toolbarPeriod { display: grid; gap: 3px; padding-left: 18px; border-left: 1px solid var(--owner-line); }
 .toolbarPeriod b { color: var(--owner-blue); font-size: 12px; }
+.performanceCard { overflow: hidden; border: 1px solid rgba(255,255,255,.92); border-radius: 22px; background: rgba(255,255,255,.94); box-shadow: 0 14px 38px rgba(31,32,67,.07); }
+.performanceHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 26px 28px 22px; }
+.performanceHeader > div:first-child { display: grid; gap: 6px; }
+.performanceHeader span { color: var(--owner-blue); font-size: 10px; font-weight: 820; letter-spacing: .12em; }
+.performanceHeader h1 { margin: 0; color: var(--owner-ink); font-size: clamp(25px,2vw,34px); line-height: 1.08; letter-spacing: -.035em; }
+.performanceHeader p { margin: 0; color: var(--owner-muted); font-size: 12px; }
+.scopeNote { min-width: 190px; display: grid; justify-items: end; gap: 4px; text-align: right; }
+.scopeNote b { color: var(--owner-blue); font-size: 18px; }
+.scopeNote span { max-width: 220px; color: var(--owner-muted); font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.performanceScroll { overflow-x: auto; padding: 0 28px 28px; }
+.performanceTable { width: 100%; min-width: 930px; border-spacing: 0; border-collapse: separate; color: var(--owner-ink); font-variant-numeric: tabular-nums; }
+.performanceTable th,.performanceTable td { padding: 11px 16px; border-right: 1px solid rgba(37,33,111,.13); border-bottom: 1px solid rgba(37,33,111,.13); text-align: right; }
+.performanceTable th:first-child,.performanceTable td:first-child { border-left: 1px solid rgba(37,33,111,.13); text-align: left; }
+.performanceTable thead th { color: white; border-color: rgba(255,255,255,.28); background: #365b9a; font-size: 13px; font-weight: 760; line-height: 1.2; text-align: center; }
+.performanceTable thead th:first-child { border-top-left-radius: 10px; }
+.performanceTable thead th:last-child { border-top-right-radius: 10px; }
+.performanceTable thead small { display: block; margin-top: 4px; color: rgba(255,255,255,.78); font-size: 9px; font-weight: 560; }
+.performanceTable tbody th { font-size: 12px; font-weight: 780; white-space: nowrap; }
+.performanceTable tbody td { font-size: clamp(13px,1.15vw,17px); font-weight: 680; }
+.performanceTable .yearRow0 > * { background: #e9f2fb; }
+.performanceTable .yearRow1 > * { background: #ecf6e9; }
+.performanceTable .yearRow2 > * { background: #fff8dc; }
+.performanceTable .yearRow3 > * { background: #fff0e6; }
+.performanceTable .currentYearRow > * { border-top: 2px solid #d97845; border-bottom: 2px solid #d97845; font-weight: 820; }
+.performanceTable .currentYearRow > *:first-child { border-left: 2px solid #d97845; }
+.performanceTable .currentYearRow > *:last-child { border-right: 2px solid #d97845; }
+.yoyTitle { margin-top: 20px; padding: 8px 13px; border-radius: 9px 9px 0 0; color: white; background: #477a35; font-size: 14px; font-weight: 800; }
+.yoyTable thead th { background: #5b873f; }
+.yoyTable tbody > tr > * { background: #f7f9f6; }
+.yoyTable tbody td { font-size: 14px; font-weight: 800; text-align: center; }
+.yoyTable .currentYoyRow > * { background: #eef6e9; border-bottom: 2px solid #5b873f; }
+.entityBars { display: grid; gap: 12px; margin-top: 18px; }
+.entityBars button { width: 100%; position: relative; display: grid; grid-template-columns: minmax(145px,1fr) minmax(220px,4fr); align-items: center; gap: 14px; padding: 11px 12px; border: 1px solid transparent; border-radius: 11px; color: var(--owner-ink); background: transparent; text-align: left; cursor: pointer; }
+.entityBars button:hover,.entityBars .activeEntity { border-color: rgba(37,33,111,.15); background: var(--owner-blue-soft); }
+.entityBars button::after { position: absolute; z-index: 4; right: 12px; top: -27px; display: none; padding: 6px 9px; border-radius: 8px; color: white; background: rgba(26,24,68,.96); box-shadow: 0 8px 22px rgba(25,23,65,.2); content: attr(data-value); font-size: 10px; font-weight: 720; pointer-events: none; white-space: nowrap; }
+.entityBars button:hover::after,.entityBars button:focus-visible::after { display: block; }
+.entityBars button:disabled { cursor: default; opacity: .72; }
+.entityName { overflow: hidden; font-size: 12px; font-weight: 730; text-overflow: ellipsis; white-space: nowrap; }
+.entityTrack { height: 12px; overflow: hidden; border-radius: 8px; background: #eceef4; }
+.entityTrack i { height: 100%; display: block; border-radius: 8px; }
+.structurePanel,.monthlyPanel,.workforcePanel { min-height: 0 !important; }
 .toolbarPeriod span { color: var(--owner-muted); font-size: 10px; }
 
 .positive { color: var(--owner-green) !important; }
@@ -56,7 +97,7 @@
 .qualityNote svg { flex: none; }
 
 .trajectoryPanel { min-height: 0 !important; }
-.trajectoryPanel > header > b { padding: 7px 10px; border-radius: 9px; color: var(--owner-green) !important; background: rgba(44,152,102,.1); }
+.trajectoryPanel > header > b { padding: 7px 10px; border-radius: 9px; background: rgba(44,152,102,.1); }
 .cumulativeChartWrap { margin-top: 8px; }
 .chartLegend { display: flex; flex-wrap: wrap; gap: 9px; margin: 14px 0 2px; }
 .chartLegend span { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--owner-line); border-radius: 9px; color: var(--owner-muted); font-size: 11px; }
@@ -150,7 +191,7 @@
 
 .managementGrid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(320px,.65fr); gap: 12px; align-items: start; }
 .workforcePanel { min-height: 470px !important; }
-.economicsMetrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 16px; }
+.economicsMetrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin-top: 16px; }
 .economicsMetrics > div { display: grid; gap: 5px; padding: 11px 12px; border-radius: 11px; background: #f5f6f9; }
 .economicsMetrics span { color: var(--owner-muted); font-size: 9px; line-height: 1.3; }
 .economicsMetrics strong { color: var(--owner-ink); font-size: 16px; }
@@ -234,6 +275,7 @@
   .structurePanel,.monthlyPanel,.analysisGrid > article { min-height: 0 !important; }
   .donutLayout { grid-template-columns: 230px minmax(0,1fr); }
   .donutLayout > svg { width: 220px; }
+  .economicsMetrics { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 720px) {
   .financeApp :global(.role-panel) { padding: 19px 16px; }
@@ -243,6 +285,12 @@
   .periodSwitch { width: 100%; }
   .periodSwitch button,.periodSwitch label { flex: 1; min-width: 0; }
   .periodSwitch button { justify-content: center; padding: 0 8px; }
+  .performanceHeader { align-items: flex-start; flex-direction: column; padding: 21px 18px 17px; }
+  .scopeNote { min-width: 0; justify-items: start; text-align: left; }
+  .performanceScroll { padding: 0 18px 20px; }
+  .performanceTable { min-width: 830px; }
+  .entityBars button { grid-template-columns: minmax(110px,1fr) minmax(110px,2fr); gap: 8px; padding: 9px 6px; }
+  .entityName { font-size: 10px; }
   .kpiGrid { grid-template-columns: 1fr; }
   .kpiCard { min-height: 138px; grid-template-columns: minmax(0,1fr) 110px; }
   .kpiTrend svg { width: 110px; }
