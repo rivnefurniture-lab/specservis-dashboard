@@ -58,9 +58,9 @@
 .performanceTable th:first-child,.performanceTable td:first-child { text-align: left; }
 .performanceTable thead th { color: var(--owner-muted); background: #f0f2f7; font-size: 9px; font-weight: 760; line-height: 1.25; letter-spacing: .04em; text-transform: uppercase; }
 .performanceTable thead small { display: block; margin-top: 3px; color: #969aaa; font-size: 8px; font-weight: 540; letter-spacing: 0; text-transform: none; }
-.performanceTable tbody th { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 780; white-space: nowrap; }
-.performanceTable tbody th > i { width: 8px; height: 8px; flex: none; border-radius: 50%; }
-.performanceTable tbody th > em { padding: 3px 6px; border-radius: 6px; color: var(--owner-blue); background: var(--owner-blue-soft); font-size: 8px; font-style: normal; font-weight: 760; }
+.performanceTable tbody th { font-size: 11px; font-weight: 780; white-space: nowrap; }
+.performanceTable tbody th > i { width: 8px; height: 8px; display: inline-block; margin-right: 8px; border-radius: 50%; vertical-align: middle; }
+.performanceTable tbody th > em { display: inline-block; margin-left: 8px; padding: 3px 6px; border-radius: 6px; color: var(--owner-blue); background: var(--owner-blue-soft); font-size: 8px; font-style: normal; font-weight: 760; vertical-align: middle; }
 .performanceTable tbody td strong { display: block; color: var(--owner-ink); font-size: 13px; }
 .performanceTable tbody td small { display: inline-block; min-width: 56px; margin-top: 5px; padding: 5px 8px; border: 1px solid transparent; border-radius: 7px; font-size: 10px; font-weight: 820; text-align: center; }
 .performanceTable tbody td small.positive { border-color: rgba(34,145,94,.14); background: #e6f5ed; }
