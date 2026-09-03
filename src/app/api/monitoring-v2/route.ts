@@ -74,6 +74,7 @@ export async function GET(request: Request) {
   const startedAt = performance.now();
   const viewer = await account();
   if (!viewer) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let stage = "load";
   try {
     const exportRequested = new URL(request.url).searchParams.get("format") === "xlsx";
     const filters = filtersFrom(request, viewer.direction, viewer.role === "owner");
@@ -82,6 +83,7 @@ export async function GET(request: Request) {
     const payload = await loadMonitoringV2(filters, exportRequested ? { maxPageSize: exportPageSize } : undefined);
     if (!payload) return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
     if (exportRequested) {
+      stage = "export-pages";
       const rows = [...payload.rows];
       const pageCount = Math.ceil(payload.total / exportPageSize);
       const remainingPages = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
@@ -90,6 +92,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
       }
       for (const page of remainingPages) rows.push(...page!.rows);
+      stage = "export-workbook";
       const body = await monitoringWorkbook(rows);
       return new NextResponse(body, {
         headers: {
@@ -106,10 +109,7 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    console.error("[monitoring-v2] request failed", {
-      durationMs: Math.round(performance.now() - startedAt),
-      error: error instanceof Error ? error.message : String(error),
-    });
+    console.error(`[monitoring-v2] request failed at ${stage} after ${Math.round(performance.now() - startedAt)}ms: ${error instanceof Error ? error.message : String(error)}`);
     return NextResponse.json({ error: "Monitoring is temporarily unavailable" }, {
       status: 503,
       headers: { "Cache-Control": "private, no-store" },
