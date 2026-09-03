@@ -111,10 +111,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[monitoring-v2] request failed at ${stage} after ${Math.round(performance.now() - startedAt)}ms: ${message}`);
-    const diagnostic = viewer.role === "owner" && new URL(request.url).searchParams.get("diagnostic") === "1"
-      ? { stage, detail: message.slice(0, 300) }
-      : {};
-    return NextResponse.json({ error: "Monitoring is temporarily unavailable", ...diagnostic }, {
+    return NextResponse.json({ error: "Monitoring is temporarily unavailable" }, {
       status: 503,
       headers: { "Cache-Control": "private, no-store" },
     });

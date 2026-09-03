@@ -27,6 +27,11 @@ async function buffer(workbook: ExcelJS.Workbook) {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+function dateCell(value: unknown) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return typeof value === "string" ? value.slice(0, 10) : "";
+}
+
 export async function monitoringWorkbook(rows: MonitoringV2Row[]) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Specservis";
@@ -54,8 +59,8 @@ export async function monitoringWorkbook(rows: MonitoringV2Row[]) {
     lot: row.lotId,
     title: row.title,
     direction: row.directions.map((item) => item.label).join(", "),
-    published: row.publishedAt?.slice(0, 10) ?? "",
-    deadline: row.deadlineAt?.slice(0, 10) ?? "",
+    published: dateCell(row.publishedAt),
+    deadline: dateCell(row.deadlineAt),
     buyer: row.buyerName,
     buyerCode: row.buyerCode ?? "",
     cpv: row.cpvCodes.join(", "),
@@ -95,7 +100,7 @@ export async function analyticsWorkbook(result: AnalyticsV2Result) {
     tender: row.externalTenderId || row.tenderId,
     lot: row.lotId ?? "",
     title: row.lotTitle || row.tenderTitle,
-    date: (row.publishedAt || row.awardDate || row.contractDate)?.slice(0, 10) ?? "",
+    date: dateCell(row.publishedAt || row.awardDate || row.contractDate),
     buyer: row.buyerName,
     supplier: row.supplierName,
     participants: row.participantCount,
