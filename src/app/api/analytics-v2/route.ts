@@ -228,11 +228,11 @@ export async function GET(request: Request) {
   const monitoringPending = Boolean(monitoringSync && (!monitoringSync.backfillComplete || monitoringSync.queued > 0));
   const complete = Boolean(stored) && !expandedPending && !monitoringPending;
   const limitations = expandedPending
-    ? ["Розширений набір синхронізується у фоні. Уже завантажені дні доступні; повнота буде підтверджена після завершення backfill."]
+    ? ["Розширені дані ще завантажуються. Показано вже отримані закупівлі."]
     : filters.scope === "expanded" && !expandedRequest
       ? ["Для розширеного пошуку вкажіть ДК-код або предметний термін."]
       : monitoringPending
-        ? [`Історичний backfill триває; у durable queue зараз ${monitoringSync?.queued ?? 0} закупівель. Уже завантажені факти доступні, але набір ще не позначено повним.`]
+        ? [`Ще завантажується історія: залишилося ${monitoringSync?.queued ?? 0} закупівель. До завершення показники можуть змінитися.`]
         : undefined;
   const payload = {
     meta: {

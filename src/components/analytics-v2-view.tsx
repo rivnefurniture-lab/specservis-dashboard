@@ -524,7 +524,7 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
     },
     sources: [{
       id: "analytics-source",
-      label: meta.source || "Джерело аналітики не назване",
+      label: meta.source?.toLowerCase().includes("prozorro") ? "Джерело: Prozorro" : meta.source || "Джерело не вказано",
       state: meta.storage === "bundled-fallback" ? "snapshot" : meta.complete ? "live" : "partial",
       updatedAt: meta.generatedAt ?? null,
       note: meta.complete === false ? "Неповне джерело: відсутні частина подій або полів." : null,
@@ -532,7 +532,7 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
     warnings: [
       ...(meta.limitations ?? []),
       ...(payload.truncated && (payload.truncated.suppliers || payload.truncated.matrix || payload.truncated.drilldown)
-        ? ["Відповідь обрізана серверними лімітами; агрегати KPI повні, таблиці показують лише повернуті рядки."]
+        ? ["Підсумки враховують усі дані. У детальних таблицях показано частину рядків."]
         : []),
     ],
     facets: {
@@ -849,11 +849,11 @@ export function AnalyticsV2View({
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>АНАЛІТИКА РИНКУ</span>
           <h1>Ринок за роками</h1>
-          <p>Обсяг ринку, наші результати та конкуренти — без зайвих технічних блоків.</p>
+          <p>Закупівлі, участі, перемоги та договори за вибраний період.</p>
           <div className={styles.heroMeta}>
             <span><CalendarDays size={13} />{data?.period.from || data?.period.to ? `${data.period.from || "…"} — ${data.period.to || "…"}` : "Період визначає запит"}</span>
             <span><Database size={13} />Оновлено: {formatDate(data?.generatedAt ?? null)}</span>
-            <span><Filter size={13} />{activeFilterCount ? `Активних фільтрів: ${activeFilterCount}` : "Базовий зріз"}</span>
+            <span><Filter size={13} />{activeFilterCount ? `Активних фільтрів: ${activeFilterCount}` : "Без додаткових фільтрів"}</span>
           </div>
         </div>
         <div className={styles.heroSignal}>
@@ -1006,7 +1006,6 @@ export function AnalyticsV2View({
                 <span>{kpi.label}</span>
                 <strong className={kpi.value === null ? styles.nullValue : ""}>{formatNumber(kpi.value, kpi.format, kpi.currency)}</strong>
                 <small>{kpi.value === null ? "Джерело не надало значення" : kpi.note || "Без додаткового пояснення"}</small>
-                <SourceLine source={kpi.source} confidence={kpi.confidence} />
               </article>
             ))}
             {!displayKpis.length ? <div className={styles.emptyInline}>Для цього зрізу немає показників.</div> : null}
