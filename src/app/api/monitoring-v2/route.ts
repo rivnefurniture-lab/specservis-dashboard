@@ -84,11 +84,12 @@ export async function GET(request: Request) {
     if (exportRequested) {
       const rows = [...payload.rows];
       const pageCount = Math.ceil(payload.total / exportPageSize);
-      for (let page = 2; page <= pageCount; page += 1) {
-        const next = await loadMonitoringV2({ ...filters, page }, { maxPageSize: exportPageSize, recordsOnly: true });
-        if (!next) return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
-        rows.push(...next.rows);
+      const remainingPages = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+        loadMonitoringV2({ ...filters, page: index + 2 }, { maxPageSize: exportPageSize, recordsOnly: true })));
+      if (remainingPages.some((page) => !page)) {
+        return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
       }
+      for (const page of remainingPages) rows.push(...page!.rows);
       const body = await monitoringWorkbook(rows);
       return new NextResponse(body, {
         headers: {
