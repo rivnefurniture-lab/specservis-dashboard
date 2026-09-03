@@ -77,11 +77,19 @@ export async function GET(request: Request) {
   try {
     const exportRequested = new URL(request.url).searchParams.get("format") === "xlsx";
     const filters = filtersFrom(request, viewer.direction, viewer.role === "owner");
-    if (exportRequested) filters.pageSize = 50_000;
-    const payload = await loadMonitoringV2(filters, exportRequested ? { maxPageSize: 50_000 } : undefined);
+    const exportPageSize = 500;
+    if (exportRequested) filters.pageSize = exportPageSize;
+    const payload = await loadMonitoringV2(filters, exportRequested ? { maxPageSize: exportPageSize } : undefined);
     if (!payload) return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
     if (exportRequested) {
-      const body = await monitoringWorkbook(payload.rows);
+      const rows = [...payload.rows];
+      const pageCount = Math.ceil(payload.total / exportPageSize);
+      for (let page = 2; page <= pageCount; page += 1) {
+        const next = await loadMonitoringV2({ ...filters, page }, { maxPageSize: exportPageSize, recordsOnly: true });
+        if (!next) return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
+        rows.push(...next.rows);
+      }
+      const body = await monitoringWorkbook(rows);
       return new NextResponse(body, {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

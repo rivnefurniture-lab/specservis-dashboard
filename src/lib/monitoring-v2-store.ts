@@ -66,7 +66,7 @@ function currentStreamKeys(now: Date) {
 
 export async function loadMonitoringV2(
   filters: MonitoringV2Filters,
-  options: { maxPageSize?: number } = {},
+  options: { maxPageSize?: number; recordsOnly?: boolean } = {},
 ): Promise<MonitoringV2Payload | null> {
   const sql = getAnalyticsSql();
   if (!sql) return null;
@@ -94,6 +94,9 @@ export async function loadMonitoringV2(
   const now = new Date();
   const streamExpectations = currentStreamKeys(now);
   const streamKeys = streamExpectations.map((item) => item.key);
+  const metadataQuery = (name: string, query: () => PromiseLike<unknown>) => options.recordsOnly
+    ? Promise.resolve([])
+    : timedQuery(name, query());
 
   const [recordRows, summaryRows, datasetRows, categoryRows, procedureRows, statusRows, cpvRows, ruleRows, suggestionRows, syncRows, queueRows] = await Promise.all([
     timedQuery("records", sql`
@@ -228,7 +231,7 @@ export async function loadMonitoringV2(
         "publishedAt" desc nulls last, "tenderId" desc, "lotId" asc
       limit ${pageSize} offset ${offset}
     `),
-    timedQuery("summary", sql`
+    metadataQuery("summary", () => sql`
       select
         count(distinct l.id) filter (where p.published_at >= (now() at time zone 'Europe/Kyiv')::date)::integer as today_lots,
         coalesce(sum(coalesce(l.expected_amount, p.expected_amount)) filter (
@@ -248,11 +251,11 @@ export async function loadMonitoringV2(
         select 1 from analytics_relevance_reviews r where r.lot_id = l.id and r.status in ('not_relevant', 'missed')
       )
     `),
-    timedQuery("dataset", sql`select generated_at from analytics_datasets where id = 'analytics-v2-monitoring' limit 1`),
-    timedQuery("categories", sql`select coalesce(main_category, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc`),
-    timedQuery("procedures", sql`select coalesce(procurement_method_type, procurement_method, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc limit 100`),
-    timedQuery("statuses", sql`select coalesce(status, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc`),
-    timedQuery("cpv", sql`
+    metadataQuery("dataset", () => sql`select generated_at from analytics_datasets where id = 'analytics-v2-monitoring' limit 1`),
+    metadataQuery("categories", () => sql`select coalesce(main_category, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc`),
+    metadataQuery("procedures", () => sql`select coalesce(procurement_method_type, procurement_method, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc limit 100`),
+    metadataQuery("statuses", () => sql`select coalesce(status, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc`),
+    metadataQuery("cpv", () => sql`
       select regexp_replace(i.cpv_code, '\\D', '', 'g') as code,
         coalesce(max(nullif(i.cpv_name, '')), regexp_replace(i.cpv_code, '\\D', '', 'g')) as label,
         count(distinct coalesce(i.lot_id, i.procurement_id))::integer as count
@@ -261,7 +264,7 @@ export async function loadMonitoringV2(
       group by regexp_replace(i.cpv_code, '\\D', '', 'g')
       order by count desc limit 1500
     `),
-    timedQuery("rules", sql`
+    metadataQuery("rules", () => sql`
       select e.id, e.direction_id, d.label as direction_label, e.entry_kind, e.value, rs.version,
         e.include_descendants, e.field_scope, e.active, e.priority
       from analytics_monitoring_rule_entries e
@@ -269,7 +272,7 @@ export async function loadMonitoringV2(
       join analytics_monitoring_directions d on d.id = e.direction_id
       order by d.priority desc, e.entry_kind, e.priority desc, e.value
     `),
-    timedQuery("suggestions", sql`
+    metadataQuery("suggestions", () => sql`
       select suggested_rule_change->>'directionId' as direction_id,
         suggested_rule_change->>'kind' as kind,
         suggested_rule_change->>'value' as value,
@@ -283,12 +286,12 @@ export async function loadMonitoringV2(
       order by occurrences desc, latest_at desc
       limit 100
     `),
-    timedQuery("sync", sql`
+    metadataQuery("sync", () => sql`
       select stream_key, cursor_value, last_success_at, last_error, failure_count,
         lease_expires_at is not null and lease_expires_at > now() as running
       from analytics_sync_state where stream_key = any(${streamKeys}::text[])
     `),
-    timedQuery("queue", sql`select count(*)::integer as count from analytics_sync_queue where scope_mode = 'monitoring'`),
+    metadataQuery("queue", () => sql`select count(*)::integer as count from analytics_sync_queue where scope_mode = 'monitoring'`),
   ]);
 
   const rawRows = recordRows as unknown as QueryRow[];
