@@ -77,7 +77,7 @@ export async function GET(request: Request) {
   try {
     const exportRequested = new URL(request.url).searchParams.get("format") === "xlsx";
     const filters = filtersFrom(request, viewer.direction, viewer.role === "owner");
-    const exportPageSize = 500;
+    const exportPageSize = 200;
     if (exportRequested) filters.pageSize = exportPageSize;
     const payload = await loadMonitoringV2(filters, exportRequested ? { maxPageSize: exportPageSize } : undefined);
     if (!payload) return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
