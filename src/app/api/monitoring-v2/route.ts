@@ -86,12 +86,20 @@ export async function GET(request: Request) {
       stage = "export-pages";
       const rows = [...payload.rows];
       const pageCount = Math.ceil(payload.total / exportPageSize);
-      const remainingPages = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
-        loadMonitoringV2({ ...filters, page: index + 2 }, { maxPageSize: exportPageSize, recordsOnly: true })));
-      if (remainingPages.some((page) => !page)) {
-        return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
+      const batchSize = 6;
+      for (let firstPage = 2; firstPage <= pageCount; firstPage += batchSize) {
+        const batch = await Promise.all(Array.from(
+          { length: Math.min(batchSize, pageCount - firstPage + 1) },
+          (_, index) => loadMonitoringV2(
+            { ...filters, page: firstPage + index },
+            { maxPageSize: exportPageSize, recordsOnly: true },
+          ),
+        ));
+        if (batch.some((page) => !page)) {
+          return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
+        }
+        for (const page of batch) rows.push(...page!.rows);
       }
-      for (const page of remainingPages) rows.push(...page!.rows);
       stage = "export-workbook";
       const body = await monitoringWorkbook(rows);
       return new NextResponse(body, {
