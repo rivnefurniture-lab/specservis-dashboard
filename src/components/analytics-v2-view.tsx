@@ -847,9 +847,9 @@ export function AnalyticsV2View({
   const matrixMap = useMemo(() => new Map(data?.matrix.cells.map((cell) => [cell.id, cell]) ?? []), [data]);
   const hasRows = Boolean(data?.participants.items.length || data?.matrix.cells.length);
   const displayKpis = useMemo(() => {
-    const preferred = ["tenders", "participations", "wins", "win-rate", "contracts", "contracts-UAH"];
+    const preferred = ["tenders", "participations", "wins", "contracts-UAH"];
     const selected = preferred.flatMap((id) => data?.kpis.find((kpi) => kpi.id === id) ?? []);
-    return selected.length ? selected : (data?.kpis.slice(0, 6) ?? []);
+    return selected.length ? selected : (data?.kpis.slice(0, 4) ?? []);
   }, [data]);
   const maxAnnualValue = Math.max(1, ...(data?.yearly.map((row) => row.contractValueUah) ?? [1]));
   const exportHref = `${endpoint}?${queryOf(applied).toString()}&format=xlsx`;
@@ -876,28 +876,34 @@ export function AnalyticsV2View({
 
       <form className={styles.filterShell} onSubmit={applyFilters}>
         <div className={styles.filterTop}>
-          <fieldset className={styles.scopeToggle}>
-            <legend>Кого показати</legend>
-            <button type="button" className={draft.audience === "all" ? styles.active : ""} onClick={() => update("audience", "all")}>Весь ринок</button>
-            <button type="button" className={draft.audience === "ours" ? styles.active : ""} onClick={() => update("audience", "ours")}>Ми</button>
-            <button type="button" className={draft.audience === "competitors" ? styles.active : ""} onClick={() => update("audience", "competitors")}>Конкуренти</button>
-          </fieldset>
-          <label className={styles.compactField}>
+          <div className={`${styles.toggleField} ${styles.audienceField}`}>
+            <span className={styles.controlLabel}>Кого показати</span>
+            <fieldset className={styles.scopeToggle}>
+              <legend>Кого показати</legend>
+              <button type="button" className={draft.audience === "all" ? styles.active : ""} onClick={() => update("audience", "all")}>Весь ринок</button>
+              <button type="button" className={draft.audience === "ours" ? styles.active : ""} onClick={() => update("audience", "ours")}>Ми</button>
+              <button type="button" className={draft.audience === "competitors" ? styles.active : ""} onClick={() => update("audience", "competitors")}>Конкуренти</button>
+            </fieldset>
+          </div>
+          <label className={`${styles.compactField} ${styles.directionField}`}>
             <span>Напрямок</span>
             <select value={draft.department} onChange={(event) => update("department", event.target.value)}>
               <option value="">Обидва напрямки</option>
               {TENDER_DIRECTION_GROUPS.map((group) => <option value={group.id} key={group.id}>{group.label}</option>)}
             </select>
           </label>
-          <fieldset className={styles.segmented}>
-            <legend>Рахувати за датою</legend>
-            {dateLenses.map((lens) => (
-              <button key={lens.id} type="button" className={draft.dateLens === lens.id ? styles.active : ""} onClick={() => update("dateLens", lens.id)} title={lens.hint}>
-                {lens.label}
-              </button>
-            ))}
-          </fieldset>
-          <label className={styles.compactField}>
+          <div className={`${styles.toggleField} ${styles.dateField}`}>
+            <span className={styles.controlLabel}>Рахувати за датою</span>
+            <fieldset className={styles.segmented}>
+              <legend>Рахувати за датою</legend>
+              {dateLenses.map((lens) => (
+                <button key={lens.id} type="button" className={draft.dateLens === lens.id ? styles.active : ""} onClick={() => update("dateLens", lens.id)} title={lens.hint}>
+                  {lens.label}
+                </button>
+              ))}
+            </fieldset>
+          </div>
+          <label className={`${styles.compactField} ${styles.periodField}`}>
             <span>Період</span>
             <select value={draft.period} onChange={(event) => update("period", event.target.value as FilterState["period"])}>
               <option value="all">Усі роки</option>
@@ -1022,16 +1028,7 @@ export function AnalyticsV2View({
             {!displayKpis.length ? <div className={styles.emptyInline}>Для цього зрізу немає показників.</div> : null}
           </section>
 
-          {data.leaders.length ? (
-            <section className={styles.panel}>
-              <header className={styles.panelHead}><div><span>КОНЦЕНТРАЦІЯ</span><h2>Основні замовники</h2><p>Лідери окремо за кількістю та сумою укладених договорів</p></div><Database size={22} aria-hidden="true" /></header>
-              <div className={styles.tableWrap}>
-                <table className={styles.dataTable}><thead><tr><th>Критерій</th><th>Замовник</th><th>Значення</th></tr></thead><tbody>{data.leaders.map((leader) => <tr key={leader.id}><td>{leader.criterion}</td><td><strong>{leader.buyer}</strong></td><td>{leader.value}</td></tr>)}</tbody></table>
-              </div>
-            </section>
-          ) : null}
-
-          {!hasRows ? (
+          {!hasRows && !data.leaders.length ? (
             <section className={styles.emptyState}>
               <Search size={25} />
               <h2>У вибраному зрізі немає записів</h2>
@@ -1039,7 +1036,26 @@ export function AnalyticsV2View({
               <button type="button" onClick={resetFilters}>Повернути базовий зріз</button>
             </section>
           ) : (
-            <>
+            <details className={styles.detailDisclosure}>
+              <summary><span><b>Деталі закупівель</b><small>Замовники, участі, договори та звʼязки</small></span><ChevronRight size={17} /></summary>
+              <div className={styles.detailStack}>
+              {data.leaders.length ? (
+                <section className={styles.panel}>
+                  <header className={styles.panelHead}><div><span>ЗАМОВНИКИ</span><h2>Основні замовники</h2><p>Лідери за кількістю та сумою договорів</p></div><Database size={22} aria-hidden="true" /></header>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.dataTable}><thead><tr><th>Критерій</th><th>Замовник</th><th>Значення</th></tr></thead><tbody>{data.leaders.map((leader) => <tr key={leader.id}><td>{leader.criterion}</td><td><strong>{leader.buyer}</strong></td><td>{leader.value}</td></tr>)}</tbody></table>
+                  </div>
+                </section>
+              ) : null}
+
+              {!hasRows ? (
+                <section className={styles.emptyState}>
+                  <Search size={25} />
+                  <h2>Немає детальних записів</h2>
+                  <p>За вибраними фільтрами доступні лише зведені показники.</p>
+                </section>
+              ) : (
+                <>
               <details className={styles.detailDisclosure}>
                 <summary><span><b>Участі та договори</b><small>{integerFormatter.format(data.participants.total)} детальних записів</small></span><ChevronRight size={17} /></summary>
                 <section className={styles.panel}>
@@ -1153,7 +1169,10 @@ export function AnalyticsV2View({
                 </aside>
                 </section>
               </details>
-            </>
+                </>
+              )}
+              </div>
+            </details>
           )}
         </>
       ) : null}

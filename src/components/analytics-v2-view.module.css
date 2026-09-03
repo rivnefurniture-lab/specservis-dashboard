@@ -17,14 +17,14 @@
 }
 
 .hero {
-  min-height: 190px;
+  min-height: 156px;
   position: relative;
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(250px, .5fr);
   align-items: center;
   gap: 28px;
-  padding: clamp(24px, 3vw, 38px);
+  padding: clamp(21px, 2.5vw, 30px);
   border: 1px solid rgba(255, 255, 255, .14);
   border-radius: 25px;
   color: white;
@@ -54,11 +54,11 @@
 .heroMeta span:first-child { color: #b8e2ff; }
 
 .heroSignal {
-  min-height: 120px;
+  min-height: 100px;
   display: grid;
   align-content: center;
   gap: 9px;
-  padding: 24px;
+  padding: 20px;
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 20px;
   background: rgba(255,255,255,.07);
@@ -78,6 +78,8 @@
   backdrop-filter: blur(16px);
 }
 .filterTop { display: grid; grid-template-columns: auto minmax(165px,.65fr) auto minmax(135px,.45fr) auto auto auto; align-items: end; gap: 9px; }
+.toggleField { min-width: 0; display: grid; gap: 7px; }
+.controlLabel { color: var(--owner-muted, #6d7183); font-size: 8px; font-weight: 780; letter-spacing: .045em; }
 .segmented,
 .scopeToggle { min-width: 0; display: flex; gap: 4px; margin: 0; padding: 4px; border: 1px solid var(--owner-line, rgba(31,34,65,.1)); border-radius: 13px; background: #f4f5f9; }
 .segmented legend,
@@ -177,7 +179,7 @@
 .sourceCard p { margin: 3px 0 0; color: var(--owner-muted, #6d7183); font-size: 8px; line-height: 1.45; }
 .noSource { grid-column: 1/-1; display: flex; align-items: center; gap: 10px; padding: 15px; border: 1px dashed rgba(205,107,40,.3); border-radius: 15px; color: #8b4a20; background: #fff9f4; font-size: 9px; }
 
-.kpiGrid { min-width: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.kpiGrid { min-width: 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
 .kpiCard { min-width: 0; min-height: 156px; position: relative; overflow: hidden; display: grid; align-content: space-between; gap: 8px; padding: 18px; border: 1px solid rgba(255,255,255,.9); border-radius: 19px; background: linear-gradient(145deg,rgba(255,255,255,.98),rgba(247,248,252,.9)); box-shadow: 0 12px 32px rgba(31,32,67,.07), inset 0 1px white; }
 .kpiCard::after { content: ""; width: 90px; height: 90px; position: absolute; right: -50px; bottom: -50px; border-radius: 50%; background: rgba(72,150,204,.09); }
 .kpiCard > span:first-child { color: var(--owner-muted, #6d7183); font-size: 9px; font-weight: 780; }
@@ -201,6 +203,7 @@
 .detailDisclosure > summary svg { color: var(--owner-blue, #25216f); transition: transform .18s ease; }
 .detailDisclosure[open] > summary { margin-bottom: 10px; }
 .detailDisclosure[open] > summary svg { transform: rotate(90deg); }
+.detailStack { display: grid; gap: 10px; }
 .panelHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
 .panelHead > div > span { color: var(--owner-blue, #25216f); font-size: 8px; font-weight: 850; letter-spacing: .16em; }
 .panelHead h2 { margin: 7px 0 4px; font-size: clamp(20px,2.2vw,29px); line-height: 1.05; letter-spacing: -.045em; }
@@ -268,11 +271,17 @@
 .srOnly { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 1240px) {
-  .filterTop { grid-template-columns: 1fr 1fr 1fr auto; }
-  .segmented { grid-column: 1/3; }
+@media (max-width: 1400px) {
+  .filterTop { grid-template-columns: repeat(6,minmax(0,1fr)); }
+  .audienceField { grid-column: 1/4; }
+  .directionField { grid-column: 4/6; }
+  .periodField { grid-column: 6; grid-row: 1; }
+  .dateField { grid-column: 1/4; grid-row: 2; }
+  .filterToggle { grid-column: 4; grid-row: 2; }
+  .exportButton { grid-column: 5; grid-row: 2; }
+  .applyButton { grid-column: 6; grid-row: 2; }
   .advancedFilters { grid-template-columns: repeat(4,minmax(0,1fr)); }
-  .kpiGrid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .kpiGrid { grid-template-columns: repeat(4,minmax(0,1fr)); }
   .yearRows article { grid-template-columns: 50px 1fr; }
   .yearRows dl { grid-column: 1/-1; }
   .presetBar { grid-template-columns: auto minmax(0,1fr); }
@@ -286,6 +295,19 @@
   .hero { grid-template-columns: 1fr; }
   .heroSignal { min-height: 112px; }
   .advancedFilters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .filterTop { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .audienceField,
+  .dateField { grid-column: 1/-1; }
+  .directionField,
+  .periodField { grid-column: auto; }
+  .dateField,
+  .periodField,
+  .filterToggle,
+  .exportButton,
+  .applyButton { grid-row: auto; }
+  .filterToggle,
+  .exportButton,
+  .applyButton { grid-column: auto; }
   .yearRows article { grid-template-columns: 45px 1fr; }
   .kpiGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .matrixLayout { grid-template-columns: minmax(0,1fr); }
@@ -300,10 +322,11 @@
   .heroMeta { display: grid; }
   .filterShell { padding: 13px; border-radius: 17px; }
   .filterTop { grid-template-columns: 1fr 1fr; align-items: stretch; }
-  .segmented { grid-column: 1/-1; display: grid; grid-template-columns: repeat(3,1fr); }
+  .dateField { grid-column: 1/-1; }
+  .segmented { display: grid; grid-template-columns: repeat(3,1fr); }
   .segmented button { padding-inline: 5px; }
-  .compactField { grid-column: 1; }
-  .scopeToggle { grid-column: 2; }
+  .directionField { grid-column: 1; }
+  .periodField { grid-column: 2; }
   .scopeToggle button { flex: 1; padding-inline: 7px; }
   .filterToggle,
   .applyButton,
@@ -329,9 +352,10 @@
 
 @media (max-width: 420px) {
   .filterTop { grid-template-columns: 1fr; }
-  .segmented,
-  .compactField,
-  .scopeToggle { grid-column: 1; }
+  .audienceField,
+  .dateField,
+  .directionField,
+  .periodField { grid-column: 1; }
   .kpiGrid { grid-template-columns: 1fr; }
 }
 
