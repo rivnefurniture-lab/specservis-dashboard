@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## Annual analytics aggregation fails strict null checks
+
+- **Error:** TypeScript reports that a currency aggregate value may be `null` while building yearly contract totals.
+- **Cause:** Analytics preserves unknown monetary values as `null`, even inside a known-currency group.
+- **Fix:** Sum only known amounts and treat `null` as unavailable (`0` contribution) instead of weakening the aggregate type.
+
 ## Spending.gov.ua intermittently returns `fetch failed`
 
 - **Error:** A small automatic payment-enrichment batch succeeds for most contracts but reports `fetch failed` for one contract.
@@ -354,3 +360,9 @@
 - **Симптом:** два однакові послідовні запити до аналітики обидва повністю перераховували дані.
 - **Причина:** локальний `Map` належить одному екземпляру функції, а Vercel може скерувати наступний запит на інший екземпляр.
 - **Fix:** відповідь кешується у Vercel Runtime Cache з коротким TTL та тегом інвалідації. Контрольний повторний запит скоротився приблизно з 10,1 с до 2,8 с; у браузері попередній зріз зʼявляється одразу.
+
+## Серверний модуль авторизації не імпортується у CLI-тесті
+
+- **Error:** прямий імпорт `src/lib/auth.ts` через `tsx -e` завершується повідомленням `server-only` про Client Component.
+- **Cause:** пакет `server-only` розрахований на умови резолюції Next.js, яких немає у звичайному CLI-процесі.
+- **Fix:** для локальної HTTP-перевірки не імпортувати модуль застосунку; створювати короткоживучий тестовий токен окремим Node-процесом за тим самим форматом і секретом, не виводячи токен у консоль.

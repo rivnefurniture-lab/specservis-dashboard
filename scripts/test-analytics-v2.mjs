@@ -82,6 +82,12 @@ const supplierOnly = buildAnalyticsV2(dataset, {
 assert.equal(supplierOnly.summary.participations, 1);
 assert.equal(supplierOnly.summary.avgOtherBidders, 1, "supplier filtering must not hide competing bidders");
 
+const competitorsOnly = buildAnalyticsV2(dataset, {
+  from: "2026-01-01", to: "2026-01-31", dateLens: "publication", excludedSupplierIds: ["S1"],
+});
+assert.equal(competitorsOnly.summary.participations, 1, "the company exclusion must leave only competitor participation");
+assert.equal(competitorsOnly.summary.wins, 0, "the company exclusion must remove its wins");
+
 const awardApril = buildAnalyticsV2(dataset, { from: "2026-04-01", to: "2026-04-30", dateLens: "award" });
 assert.equal(awardApril.summary.tenders, 1);
 assert.equal(awardApril.summary.lots, 1);

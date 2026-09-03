@@ -13,6 +13,7 @@ import type {
   MonitoringV2Payload,
   MonitoringV2Row,
 } from "@/lib/monitoring-v2-types";
+import { collapseDirectionRows, TENDER_DIRECTION_GROUPS } from "@/lib/tender-scope";
 
 type QueryRow = Omit<MonitoringV2Row,
   "expectedAmount" | "participantCount" | "directions" | "reasons" | "needsGeographyReview" | "ruleVersion"
@@ -63,11 +64,14 @@ function currentStreamKeys(now: Date) {
   ];
 }
 
-export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<MonitoringV2Payload | null> {
+export async function loadMonitoringV2(
+  filters: MonitoringV2Filters,
+  options: { maxPageSize?: number } = {},
+): Promise<MonitoringV2Payload | null> {
   const sql = getAnalyticsSql();
   if (!sql) return null;
   const page = Math.max(1, Math.floor(filters.page ?? 1));
-  const pageSize = Math.min(200, Math.max(20, Math.floor(filters.pageSize ?? 50)));
+  const pageSize = Math.min(options.maxPageSize ?? 200, Math.max(20, Math.floor(filters.pageSize ?? 50)));
   const offset = (page - 1) * pageSize;
   const query = text(filters.q);
   const needle = query ? `%${query}%` : null;
@@ -91,7 +95,7 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
   const streamExpectations = currentStreamKeys(now);
   const streamKeys = streamExpectations.map((item) => item.key);
 
-  const [recordRows, datasetRows, directionRows, categoryRows, procedureRows, statusRows, cpvRows, ruleRows, suggestionRows, syncRows, queueRows] = await Promise.all([
+  const [recordRows, summaryRows, datasetRows, categoryRows, procedureRows, statusRows, cpvRows, ruleRows, suggestionRows, syncRows, queueRows] = await Promise.all([
     timedQuery("records", sql`
       with base as (
         select
@@ -216,6 +220,7 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
         and (${keywordNeedle}::text is null or title ilike ${keywordNeedle} or description ilike ${keywordNeedle}
           or exists (select 1 from unnest("matchedTerms") term where term ilike ${keywordNeedle})
           or reasons::text ilike ${keywordNeedle})
+        and coalesce("reviewStatus", '') not in ('not_relevant', 'missed')
       order by
         case when ${sort} = 'deadline' then "deadlineAt" end asc nulls last,
         case when ${sort} = 'amount-desc' then "expectedAmount" end desc nulls last,
@@ -223,8 +228,27 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
         "publishedAt" desc nulls last, "tenderId" desc, "lotId" asc
       limit ${pageSize} offset ${offset}
     `),
+    timedQuery("summary", sql`
+      select
+        count(distinct l.id) filter (where p.published_at >= (now() at time zone 'Europe/Kyiv')::date)::integer as today_lots,
+        coalesce(sum(coalesce(l.expected_amount, p.expected_amount)) filter (
+          where p.published_at >= (now() at time zone 'Europe/Kyiv')::date and coalesce(l.expected_currency, p.expected_currency, 'UAH') = 'UAH'
+        ), 0) as today_value_uah,
+        count(distinct l.id) filter (where p.published_at >= date_trunc('month', now() at time zone 'Europe/Kyiv'))::integer as month_lots,
+        coalesce(sum(coalesce(l.expected_amount, p.expected_amount)) filter (
+          where p.published_at >= date_trunc('month', now() at time zone 'Europe/Kyiv') and coalesce(l.expected_currency, p.expected_currency, 'UAH') = 'UAH'
+        ), 0) as month_value_uah
+      from analytics_lots l
+      join analytics_procurements p on p.id = l.procurement_id
+      join analytics_dataset_procurements dp on dp.procurement_id = p.id and dp.dataset_id = 'analytics-v2-monitoring'
+      where (${directions}::text[] is null or p.department = any(${directions}::text[]) or exists (
+        select 1 from analytics_monitoring_matches m where m.lot_id = l.id and m.direction_id = any(${directions}::text[])
+      ))
+      and not exists (
+        select 1 from analytics_relevance_reviews r where r.lot_id = l.id and r.status in ('not_relevant', 'missed')
+      )
+    `),
     timedQuery("dataset", sql`select generated_at from analytics_datasets where id = 'analytics-v2-monitoring' limit 1`),
-    timedQuery("directions", sql`select id as value, label, slug from analytics_monitoring_directions where active order by priority desc`),
     timedQuery("categories", sql`select coalesce(main_category, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc`),
     timedQuery("procedures", sql`select coalesce(procurement_method_type, procurement_method, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc limit 100`),
     timedQuery("statuses", sql`select coalesce(status, 'Не вказано') as value, count(*)::integer as count from analytics_procurements group by 1 order by count desc`),
@@ -272,7 +296,7 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
     ...row,
     expectedAmount: amount(row.expectedAmount),
     participantCount: Number(row.participantCount),
-    directions: row.directions ?? [],
+    directions: collapseDirectionRows(row.directions ?? []),
     reasons: row.reasons ?? [],
     needsGeographyReview: Boolean(row.needsGeographyReview),
     ruleVersion: row.ruleVersion,
@@ -300,6 +324,10 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
   const queued = Number((queueRows as unknown as Array<{ count: number | string }>)[0]?.count ?? 0);
   const activeRuleVersion = (ruleRows as unknown as Array<{ version?: string }>)[0]?.version;
   const cpvTree = buildCpvTree(cpvRows as unknown as Array<{ code: string; label: string; count: number | string }>);
+  const summary = (summaryRows as unknown as Array<{
+    today_lots: number | string; today_value_uah: number | string;
+    month_lots: number | string; month_value_uah: number | string;
+  }>)[0];
 
   return {
     generatedAt: iso((datasetRows as unknown as Array<{ generated_at: string | Date }>)[0]?.generated_at ?? null),
@@ -308,8 +336,12 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
     page,
     pageSize,
     rows,
+    summary: {
+      today: { lots: Number(summary?.today_lots ?? 0), expectedValueUah: Number(summary?.today_value_uah ?? 0) },
+      month: { lots: Number(summary?.month_lots ?? 0), expectedValueUah: Number(summary?.month_value_uah ?? 0) },
+    },
     facets: {
-      directions: (directionRows as unknown as Array<{ value: string; label: string }>).map((row) => ({ value: row.value, label: row.label })),
+      directions: TENDER_DIRECTION_GROUPS.map((group) => ({ value: group.id, label: group.label })),
       categories: (categoryRows as unknown as Array<{ value: string; count: number }>).map((row) => ({ ...row, label: row.value })),
       procedures: (procedureRows as unknown as Array<{ value: string; count: number }>).map((row) => ({ ...row, label: row.value })),
       statuses: (statusRows as unknown as Array<{ value: string; count: number }>).map((row) => ({ ...row, label: row.value })),
@@ -322,7 +354,7 @@ export async function loadMonitoringV2(filters: MonitoringV2Filters): Promise<Mo
     }>).map((row) => ({
       id: row.id,
       directionId: row.direction_id,
-      directionLabel: row.direction_label,
+      directionLabel: TENDER_DIRECTION_GROUPS.find((group) => group.directions.includes(row.direction_id))?.label ?? row.direction_label,
       kind: row.entry_kind,
       value: row.value,
       includeDescendants: row.include_descendants,

@@ -82,6 +82,7 @@ async function procurementRows(lens: AnalyticsDateLens, filters: AnalyticsV2Filt
       where (${from}::date is null or a.decision_at >= ${from}::date)
         and (${to}::date is null or a.decision_at < ${to}::date + interval '1 day')
         and (${directions}::text[] is null or p.department = any(${directions}::text[]))
+        and not exists (select 1 from analytics_relevance_reviews r where r.procurement_id = p.id and r.status in ('not_relevant', 'missed'))
     ` as ProcurementRow[];
   }
   if (lens === "contract") {
@@ -105,6 +106,7 @@ async function procurementRows(lens: AnalyticsDateLens, filters: AnalyticsV2Filt
       where (${from}::date is null or c.signed_at >= ${from}::date)
         and (${to}::date is null or c.signed_at < ${to}::date + interval '1 day')
         and (${directions}::text[] is null or p.department = any(${directions}::text[]))
+        and not exists (select 1 from analytics_relevance_reviews r where r.procurement_id = p.id and r.status in ('not_relevant', 'missed'))
     ` as ProcurementRow[];
   }
   return await sql`
@@ -126,6 +128,7 @@ async function procurementRows(lens: AnalyticsDateLens, filters: AnalyticsV2Filt
     where (${from}::date is null or p.published_at >= ${from}::date)
       and (${to}::date is null or p.published_at < ${to}::date + interval '1 day')
       and (${directions}::text[] is null or p.department = any(${directions}::text[]))
+      and not exists (select 1 from analytics_relevance_reviews r where r.procurement_id = p.id and r.status in ('not_relevant', 'missed'))
   ` as ProcurementRow[];
 }
 

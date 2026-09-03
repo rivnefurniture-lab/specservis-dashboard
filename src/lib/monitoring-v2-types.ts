@@ -115,6 +115,10 @@ export type MonitoringV2Payload = {
   page: number;
   pageSize: number;
   rows: MonitoringV2Row[];
+  summary: {
+    today: { lots: number; expectedValueUah: number };
+    month: { lots: number; expectedValueUah: number };
+  };
   facets: {
     directions: MonitoringFacet[];
     categories: MonitoringFacet[];

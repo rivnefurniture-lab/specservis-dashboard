@@ -100,6 +100,7 @@ export type AnalyticsV2Filters = {
   dateLens?: AnalyticsDateLens;
   buyerIds?: string[];
   supplierIds?: string[];
+  excludedSupplierIds?: string[];
   currencies?: string[];
   procedureTypes?: string[];
   directions?: string[];
@@ -728,7 +729,9 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
 
   const scopedTender = (tenderId: string) => lensTenderIds.has(tenderId);
   const scopedLot = (lotId: string) => lensLotIds.has(lotId);
-  const supplierAllowed = (supplierId: string, supplierName: string) => selectedParty(supplierId, supplierName, filters.supplierIds);
+  const supplierAllowed = (supplierId: string, supplierName: string) =>
+    selectedParty(supplierId, supplierName, filters.supplierIds)
+    && (!filters.excludedSupplierIds?.length || !selectedParty(supplierId, supplierName, filters.excludedSupplierIds));
   const allLatestBids = latestBy(
     input.bids.filter((bid) => scopedLot(bid.lotId)),
     (bid) => key(bid.supplierId, bid.lotId),

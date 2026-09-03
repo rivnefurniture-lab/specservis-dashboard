@@ -1,5 +1,5 @@
 .page { display: grid; gap: 18px; color: #17182a; }
-.hero, .toolbar, .filters, .settingsPanel, .tableCard { background: #fff; border: 1px solid #e4e6f0; border-radius: 24px; box-shadow: 0 14px 42px rgba(31, 32, 79, .06); }
+.hero, .toolbar, .filters, .settingsPanel, .tableCard, .summary article { background: #fff; border: 1px solid #e4e6f0; border-radius: 24px; box-shadow: 0 14px 42px rgba(31, 32, 79, .06); }
 .hero { padding: 28px 30px; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
 .hero > div:first-child > span { color: #2c287e; font-size: 11px; font-weight: 850; letter-spacing: .15em; }
 .hero h1 { margin: 8px 0 5px; font-size: clamp(27px, 3vw, 42px); line-height: 1.04; letter-spacing: -.045em; }
@@ -13,6 +13,11 @@
 .health small { color: #777b90; font-size: 10px; }
 .health button, .toolbar button, .settingsPanel button, .filters button, .pagination button { border: 0; background: transparent; color: inherit; cursor: pointer; }
 .health button { width: 35px; height: 35px; border: 1px solid #e0e2eb; border-radius: 11px; display: grid; place-items: center; }
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.summary article { padding: 18px 20px; display: grid; gap: 4px; }
+.summary span { color: #72768a; font-size: 11px; font-weight: 750; }
+.summary strong { color: #272273; font-size: 30px; letter-spacing: -.04em; }
+.summary small { color: #777b90; font-size: 10px; }
 
 .toolbar { padding: 12px; display: flex; align-items: center; gap: 9px; }
 .search { flex: 1; min-width: 260px; height: 45px; padding: 0 13px; border: 1px solid #dedfea; border-radius: 13px; display: flex; align-items: center; gap: 9px; }
@@ -20,6 +25,7 @@
 .search button { width: 28px; height: 28px; display: grid; place-items: center; }
 .filterButton { height: 45px; padding: 0 14px; border: 1px solid #dedfea !important; border-radius: 13px; display: inline-flex; align-items: center; gap: 7px; font-weight: 750; white-space: nowrap; }
 .filterButton b { min-width: 20px; height: 20px; padding: 0 5px; border-radius: 8px; display: grid; place-items: center; background: #2e287f; color: #fff; font-size: 10px; }
+.exportButton { height: 45px; padding: 0 15px; border-radius: 13px; background: #2e287f; color: #fff; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; font-weight: 800; white-space: nowrap; }
 .sort { height: 45px; padding: 0 11px; border: 1px solid #dedfea; border-radius: 13px; display: flex; align-items: center; }
 .sort select { border: 0; outline: 0; appearance: none; padding-right: 9px; background: transparent; font-weight: 750; }
 
@@ -109,7 +115,8 @@
 .detailGrid b { font-size: 11px; }
 .detailGrid small { color: #777b8e; font-size: 9px; }
 .detailGrid a { min-height: 38px; padding: 0 12px; border-radius: 10px; background: #fff; color: #2e287f; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-weight: 800; }
-.reviewForm { margin-top: 13px; display: grid; grid-template-columns: 210px 1fr auto; gap: 8px; }
+.reviewForm { margin-top: 13px; display: grid; grid-template-columns: 190px minmax(220px, 1fr) minmax(220px, 1fr) auto auto; gap: 8px; }
+.reviewForm .removeButton { background: #fff0ee; color: #a42d2d; border: 1px solid #f0cbc5; }
 .reviewForm small { grid-column: 1 / -1; color: #a03232; }
 .empty { padding: 60px 20px; display: grid; place-items: center; gap: 8px; color: #7a7e91; }
 .empty b { color: #222337; }
@@ -122,6 +129,7 @@
 
 @media (max-width: 1180px) {
   .hero { align-items: stretch; flex-direction: column; }
+  .summary { grid-template-columns: 1fr; }
   .health { min-width: 0; }
   .filterGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settingsPanel > div:not(.ruleList), .ruleList { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -7,13 +7,15 @@ import { ensureExpandedAnalyticsRequest, isExpandedDiscovery } from "@/lib/analy
 import { legacyAnalyticsMeta, legacyCompetitorAnalyticsInput } from "@/lib/analytics-v2-legacy";
 import { loadAnalyticsV2Input } from "@/lib/analytics-v2-store";
 import { monitoringAnalyticsSyncSummary } from "@/lib/analytics-v2-sync-store";
+import { analyticsWorkbook } from "@/lib/tender-excel";
+import { directionsForAccount, expandDirectionGroups, TENDER_DIRECTION_GROUPS } from "@/lib/tender-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const dateLenses = new Set<AnalyticsDateLens>(["publication", "award", "contract"]);
-const directions = new Set(["Капбудівництво", "Сервіс", "Кондиціонування"]);
+const ownSupplierSelectors = ["30518990"];
 const RESPONSE_CACHE_TTL_SECONDS = 60;
 const RESPONSE_CACHE_PENDING_TTL_SECONDS = 300;
 const responseCache = getCache({ namespace: "analytics-v2-responses" });
@@ -88,12 +90,13 @@ export async function GET(request: Request) {
   if (account.role === "employee") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const params = new URL(request.url).searchParams;
+  const exportRequested = params.get("format") === "xlsx";
   const requestedLens = params.get("dateLens") as AnalyticsDateLens | null;
-  const requestedDirections = values(params, "direction", 3, 40).filter((item) => directions.has(item));
+  const requestedDirections = expandDirectionGroups(values(params, "direction", 10, 60));
   const permittedDirections = account.role === "owner"
-    ? requestedDirections
+    ? requestedDirections.length ? requestedDirections : TENDER_DIRECTION_GROUPS.flatMap((group) => group.directions)
     : account.direction
-      ? [account.direction]
+      ? directionsForAccount(account.direction)
       : [];
   const from = isoDate(params.get("from"));
   const to = isoDate(params.get("to"));
@@ -101,6 +104,8 @@ export async function GET(request: Request) {
 
   const defaults = defaultPeriod();
   const requestedScope = params.get("scope");
+  const audience = params.get("audience");
+  const selectedSuppliers = values(params, "supplier", 30, 120);
   const filters: AnalyticsV2Filters = {
     from: from ?? defaults.from,
     to: to ?? defaults.to,
@@ -109,7 +114,8 @@ export async function GET(request: Request) {
     directions: permittedDirections.length ? permittedDirections : undefined,
     cpvPrefixes: values(params, "cpv", 30, 12).map((value) => value.replace(/[^0-9-]/g, "")).filter(Boolean),
     buyerIds: values(params, "buyer", 30, 120),
-    supplierIds: values(params, "supplier", 30, 120),
+    supplierIds: audience === "ours" ? ownSupplierSelectors : selectedSuppliers,
+    excludedSupplierIds: audience === "competitors" ? ownSupplierSelectors : undefined,
     procedureTypes: values(params, "procedure", 30, 120),
     currencies: values(params, "currency", 10, 12).map((value) => value.toUpperCase()),
     subjectQuery: params.get("subject")?.slice(0, 200).trim() || null,
@@ -156,7 +162,7 @@ export async function GET(request: Request) {
   const canonicalParams = new URLSearchParams(params);
   canonicalParams.sort();
   const responseCacheKey = `${account.role}:${account.direction ?? "all"}:${canonicalParams.toString()}`;
-  const cachedPayload = await readResponseCache(responseCacheKey);
+  const cachedPayload = exportRequested ? null : await readResponseCache(responseCacheKey);
   if (cachedPayload) {
     const response = NextResponse.json(cachedPayload, { headers: { "Cache-Control": "private, no-store" } });
     response.headers.set("Server-Timing", "cache;desc=hit;dur=0");
@@ -180,6 +186,33 @@ export async function GET(request: Request) {
   });
   const engineStartedAt = performance.now();
   const result = buildAnalyticsV2(input, filters);
+  const yearly = [...new Set(result.drilldown.map((row) => {
+    const value = filters.dateLens === "award" ? row.awardDate : filters.dateLens === "contract" ? row.contractDate : row.publishedAt;
+    return value?.slice(0, 4) ?? null;
+  }).filter((value): value is string => Boolean(value)))].sort().map((year) => {
+    const rows = result.drilldown.filter((row) => {
+      const value = filters.dateLens === "award" ? row.awardDate : filters.dateLens === "contract" ? row.contractDate : row.publishedAt;
+      return value?.startsWith(year);
+    });
+    const tenderIds = new Set(rows.map((row) => row.tenderId));
+    const lotIds = new Set(rows.flatMap((row) => row.lotId ? [row.lotId] : []));
+    const participations = rows.filter((row) => row.participation).length;
+    const wins = rows.filter((row) => row.won).length;
+    const contractIds = new Set(rows.flatMap((row) => row.contractIds));
+    const contractValueUah = rows.reduce((total, row) => total + row.currentAmount
+      .filter((amount) => amount.currency === "UAH")
+      .reduce((sum, amount) => sum + (amount.value ?? 0), 0), 0);
+    return {
+      year,
+      tenders: tenderIds.size,
+      lots: lotIds.size,
+      participations,
+      wins,
+      contracts: contractIds.size,
+      winRate: participations ? wins / participations : null,
+      contractValueUah,
+    };
+  });
   const engineMs = performance.now() - engineStartedAt;
   const supplierLimit = boundedInteger(params.get("supplierLimit"), 100, 1, 500);
   const matrixLimit = boundedInteger(params.get("matrixLimit"), 200, 1, 1_000);
@@ -222,7 +255,7 @@ export async function GET(request: Request) {
     },
     filters: publicFilters,
     facets: {
-      directions: account.role === "owner" ? [...directions] : permittedDirections,
+      directions: TENDER_DIRECTION_GROUPS.map((group) => group.id),
       procedures,
       buyers: buyers.slice(0, 500),
       categories: ["goods", "services", "works"],
@@ -250,6 +283,7 @@ export async function GET(request: Request) {
       matrix: result.matrix.slice(0, matrixLimit),
       drilldown: result.drilldown.slice(0, drilldownLimit),
     },
+    yearly,
     truncated: {
       suppliers: result.suppliers.length > supplierLimit,
       matrix: result.matrix.length > matrixLimit,
@@ -261,6 +295,16 @@ export async function GET(request: Request) {
       },
     },
   };
+  if (exportRequested) {
+    const body = await analyticsWorkbook(result);
+    return new NextResponse(body, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="analytics-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
   waitUntil(writeResponseCache(
     responseCacheKey,
     payload,

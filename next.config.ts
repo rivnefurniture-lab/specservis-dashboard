@@ -39,6 +39,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  agentRules: false,
   poweredByHeader: false,
   outputFileTracingIncludes: {
     "/api/cron/analytics": ["./db/analytics-v2.sql"],

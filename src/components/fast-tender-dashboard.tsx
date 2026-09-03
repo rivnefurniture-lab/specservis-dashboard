@@ -22,7 +22,7 @@ import type { DashboardViewer } from "@/lib/dashboard-data";
 
 export type FastTenderView = "market" | "competitors" | "projects" | "tender-workspace";
 type TenderView = "overview" | "work" | FastTenderView;
-type DirectionScope = "all" | NonNullable<DashboardViewer["direction"]>;
+type DirectionScope = "all" | "Капбудівництво" | "Кондиціонування";
 
 const ProjectsView = dynamic(() => import("@/components/projects-view").then((module) => module.ProjectsView), { loading: ModuleLoading });
 const AnalyticsV2View = dynamic(() => import("@/components/analytics-v2-view").then((module) => module.AnalyticsV2View), { loading: ModuleLoading });
@@ -46,10 +46,12 @@ const roleLabels: Record<DashboardViewer["role"], string> = {
 
 const directionLabels: Record<DirectionScope, string> = {
   all: "Уся компанія",
-  "Капбудівництво": "Капітальне будівництво",
-  "Сервіс": "Сервіс",
-  "Кондиціонування": "Кондиціонування",
+  "Капбудівництво": "Будівельні",
+  "Кондиціонування": "Сервіс і кондиціонування",
 };
+
+const directionScopeFor = (direction: DashboardViewer["direction"]): DirectionScope =>
+  direction === "Капбудівництво" ? "Капбудівництво" : direction ? "Кондиціонування" : "all";
 
 function ModuleLoading() {
   return (
@@ -73,7 +75,7 @@ function hrefFor(view: TenderView) {
 export function FastTenderDashboard({ viewer, initialView }: { viewer: DashboardViewer; initialView: FastTenderView }) {
   const router = useRouter();
   const [view, setView] = useState<FastTenderView>(initialView);
-  const [directionScope, setDirectionScope] = useState<DirectionScope>(viewer.direction ?? "all");
+  const [directionScope, setDirectionScope] = useState<DirectionScope>(() => directionScopeFor(viewer.direction));
   const [mobileMenu, setMobileMenu] = useState(false);
   const [monitoringTotal, setMonitoringTotal] = useState<number | null>(null);
 
@@ -132,7 +134,7 @@ export function FastTenderDashboard({ viewer, initialView }: { viewer: Dashboard
           </div>
           {viewer.financeAccess ? <nav className="owner-workspace-tabs" aria-label="Розділи кабінету"><button type="button" className="active"><Landmark size={16} />Тендери</button><button type="button" onClick={() => router.push("/?workspace=finance")}><WalletCards size={16} />Фінанси</button></nav> : null}
           <div className="owner-topbar-actions">
-            <label className="owner-direction-select"><span>Напрямок</span><div><select value={directionScope} onChange={(event) => setDirectionScope(event.target.value as DirectionScope)} disabled={viewer.role !== "owner"}>{viewer.role === "owner" ? <option value="all">Уся компанія</option> : null}{viewer.availableDirections.map((direction) => <option key={direction} value={direction}>{directionLabels[direction]}</option>)}</select><ChevronDown size={15} /></div></label>
+            <label className="owner-direction-select"><span>Напрямок</span><div><select value={directionScope} onChange={(event) => setDirectionScope(event.target.value as DirectionScope)} disabled={viewer.role !== "owner"}>{viewer.role === "owner" ? <><option value="all">Уся компанія</option><option value="Капбудівництво">Будівельні</option><option value="Кондиціонування">Сервіс і кондиціонування</option></> : <option value={directionScope}>{directionLabels[directionScope]}</option>}</select><ChevronDown size={15} /></div></label>
           </div>
         </header>
 

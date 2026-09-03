@@ -17,14 +17,14 @@
 }
 
 .hero {
-  min-height: 254px;
+  min-height: 190px;
   position: relative;
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(250px, .5fr);
   align-items: center;
   gap: 28px;
-  padding: clamp(27px, 3.5vw, 48px);
+  padding: clamp(24px, 3vw, 38px);
   border: 1px solid rgba(255, 255, 255, .14);
   border-radius: 25px;
   color: white;
@@ -47,14 +47,14 @@
 .heroCopy,
 .heroSignal { position: relative; z-index: 1; min-width: 0; }
 .eyebrow { color: #95d5ff; font-size: 9px; font-weight: 850; letter-spacing: .18em; }
-.hero h1 { max-width: 850px; margin: 16px 0 12px; font-size: clamp(32px, 4vw, 58px); line-height: .98; letter-spacing: -.065em; font-weight: 620; }
+.hero h1 { max-width: 850px; margin: 10px 0 8px; font-size: clamp(31px, 3.5vw, 49px); line-height: 1; letter-spacing: -.055em; font-weight: 650; }
 .heroCopy > p { max-width: 760px; margin: 0; color: rgba(255,255,255,.66); font-size: 12px; line-height: 1.65; }
-.heroMeta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.heroMeta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .heroMeta span { min-height: 29px; display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; color: rgba(255,255,255,.66); background: rgba(0,0,0,.13); font-size: 9px; }
 .heroMeta span:first-child { color: #b8e2ff; }
 
 .heroSignal {
-  min-height: 150px;
+  min-height: 120px;
   display: grid;
   align-content: center;
   gap: 9px;
@@ -77,7 +77,7 @@
   box-shadow: 0 14px 38px rgba(31,32,67,.075), inset 0 1px white;
   backdrop-filter: blur(16px);
 }
-.filterTop { display: grid; grid-template-columns: auto minmax(140px,.45fr) auto auto auto; align-items: end; gap: 10px; }
+.filterTop { display: grid; grid-template-columns: auto minmax(165px,.65fr) auto minmax(135px,.45fr) auto auto auto; align-items: end; gap: 9px; }
 .segmented,
 .scopeToggle { min-width: 0; display: flex; gap: 4px; margin: 0; padding: 4px; border: 1px solid var(--owner-line, rgba(31,34,65,.1)); border-radius: 13px; background: #f4f5f9; }
 .segmented legend,
@@ -107,6 +107,7 @@
 .filterToggle { border: 1px solid var(--owner-line, rgba(31,34,65,.1)); color: var(--owner-blue, #25216f); background: var(--owner-blue-soft, #eeeffb); }
 .filterToggle b { min-width: 18px; height: 18px; display: grid; place-items: center; border-radius: 99px; color: white; background: var(--owner-blue, #25216f); font-size: 8px; }
 .applyButton { border: 0; color: white; background: var(--owner-blue, #25216f); box-shadow: 0 9px 20px rgba(37,33,111,.2); }
+.exportButton { height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(37,33,111,.14); border-radius: 11px; color: var(--owner-blue, #25216f); background: white; text-decoration: none; font-size: 10px; font-weight: 780; white-space: nowrap; }
 .applyButton:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(37,33,111,.25); }
 .applyButton:disabled { opacity: .62; cursor: wait; }
 .customDates { display: flex; gap: 10px; padding: 14px 0 0; }
@@ -143,6 +144,23 @@
 .emptyState p { max-width: 560px; margin: 0; color: var(--owner-muted, #6d7183); font-size: 10px; line-height: 1.6; }
 .emptyState button { margin-top: 8px; padding: 10px 14px; border: 0; border-radius: 10px; color: white; background: var(--owner-blue, #25216f); font-size: 10px; cursor: pointer; }
 
+.dataStatus { min-height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 4px; color: var(--owner-muted, #6d7183); font-size: 9px; }
+.dataStatus span { color: var(--owner-ink, #141522); font-weight: 750; }
+.dataStatus small { margin-left: auto; }
+.yearPanel { min-width: 0; padding: clamp(18px,2.5vw,28px); border: 1px solid rgba(255,255,255,.9); border-radius: 22px; background: rgba(255,255,255,.9); box-shadow: 0 14px 38px rgba(31,32,67,.07), inset 0 1px white; }
+.yearPanel > header { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.yearPanel > header span { color: var(--owner-blue, #25216f); font-size: 8px; font-weight: 850; letter-spacing: .14em; }
+.yearPanel h2 { margin: 5px 0 0; font-size: clamp(20px,2.2vw,29px); letter-spacing: -.04em; }
+.yearPanel > header small { color: var(--owner-muted, #6d7183); font-size: 8px; }
+.yearRows { display: grid; gap: 6px; }
+.yearRows article { min-width: 0; display: grid; grid-template-columns: 52px minmax(120px,1fr) minmax(510px,1.5fr); align-items: center; gap: 16px; min-height: 62px; padding: 10px 12px; border-radius: 13px; background: #f7f8fb; }
+.yearRows article > strong { color: var(--owner-blue, #25216f); font-size: 17px; }
+.yearBar { height: 10px; overflow: hidden; border-radius: 99px; background: #e6e8f1; }
+.yearBar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#2b267c,#4896cc); }
+.yearRows dl { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 9px; margin: 0; }
+.yearRows dl > div { min-width: 0; display: grid; gap: 3px; }
+.yearRows dt { color: var(--owner-muted, #6d7183); font-size: 7px; }
+.yearRows dd { overflow: hidden; margin: 0; font-size: 11px; font-weight: 780; text-overflow: ellipsis; white-space: nowrap; }
 .sourceStrip { min-width: 0; display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 10px; }
 .sourceCard { min-width: 0; min-height: 115px; position: relative; display: grid; align-content: start; gap: 5px; padding: 16px; border: 1px solid rgba(255,255,255,.9); border-radius: 17px; background: rgba(255,255,255,.84); box-shadow: 0 9px 28px rgba(31,32,67,.055), inset 0 1px white; }
 .sourceCard::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; border-radius: 17px 0 0 17px; background: #9ba0b2; }
@@ -159,7 +177,7 @@
 .sourceCard p { margin: 3px 0 0; color: var(--owner-muted, #6d7183); font-size: 8px; line-height: 1.45; }
 .noSource { grid-column: 1/-1; display: flex; align-items: center; gap: 10px; padding: 15px; border: 1px dashed rgba(205,107,40,.3); border-radius: 15px; color: #8b4a20; background: #fff9f4; font-size: 9px; }
 
-.kpiGrid { min-width: 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.kpiGrid { min-width: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .kpiCard { min-width: 0; min-height: 156px; position: relative; overflow: hidden; display: grid; align-content: space-between; gap: 8px; padding: 18px; border: 1px solid rgba(255,255,255,.9); border-radius: 19px; background: linear-gradient(145deg,rgba(255,255,255,.98),rgba(247,248,252,.9)); box-shadow: 0 12px 32px rgba(31,32,67,.07), inset 0 1px white; }
 .kpiCard::after { content: ""; width: 90px; height: 90px; position: absolute; right: -50px; bottom: -50px; border-radius: 50%; background: rgba(72,150,204,.09); }
 .kpiCard > span:first-child { color: var(--owner-muted, #6d7183); font-size: 9px; font-weight: 780; }
@@ -174,6 +192,15 @@
 .confidence.low { color: #a3293a; background: #fff0f2; }
 
 .panel { min-width: 0; padding: clamp(18px,2.5vw,28px); border: 1px solid rgba(255,255,255,.9); border-radius: 22px; background: rgba(255,255,255,.88); box-shadow: 0 14px 38px rgba(31,32,67,.07), inset 0 1px white; }
+.detailDisclosure { min-width: 0; }
+.detailDisclosure > summary { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 20px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(255,255,255,.88); box-shadow: 0 10px 28px rgba(31,32,67,.06); cursor: pointer; list-style: none; }
+.detailDisclosure > summary::-webkit-details-marker { display: none; }
+.detailDisclosure > summary span { display: grid; gap: 3px; }
+.detailDisclosure > summary b { font-size: 12px; }
+.detailDisclosure > summary small { color: var(--owner-muted, #6d7183); font-size: 8px; }
+.detailDisclosure > summary svg { color: var(--owner-blue, #25216f); transition: transform .18s ease; }
+.detailDisclosure[open] > summary { margin-bottom: 10px; }
+.detailDisclosure[open] > summary svg { transform: rotate(90deg); }
 .panelHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
 .panelHead > div > span { color: var(--owner-blue, #25216f); font-size: 8px; font-weight: 850; letter-spacing: .16em; }
 .panelHead h2 { margin: 7px 0 4px; font-size: clamp(20px,2.2vw,29px); line-height: 1.05; letter-spacing: -.045em; }
@@ -242,10 +269,12 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1240px) {
-  .filterTop { grid-template-columns: 1fr 1fr auto; }
+  .filterTop { grid-template-columns: 1fr 1fr 1fr auto; }
   .segmented { grid-column: 1/3; }
   .advancedFilters { grid-template-columns: repeat(4,minmax(0,1fr)); }
   .kpiGrid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .yearRows article { grid-template-columns: 50px 1fr; }
+  .yearRows dl { grid-column: 1/-1; }
   .presetBar { grid-template-columns: auto minmax(0,1fr); }
   .presetName,
   .savePreset { grid-row: 2; }
@@ -257,6 +286,7 @@
   .hero { grid-template-columns: 1fr; }
   .heroSignal { min-height: 112px; }
   .advancedFilters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .yearRows article { grid-template-columns: 45px 1fr; }
   .kpiGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .matrixLayout { grid-template-columns: minmax(0,1fr); }
   .drilldown { min-height: 300px; }
@@ -276,7 +306,8 @@
   .scopeToggle { grid-column: 2; }
   .scopeToggle button { flex: 1; padding-inline: 7px; }
   .filterToggle,
-  .applyButton { width: 100%; }
+  .applyButton,
+  .exportButton { width: 100%; }
   .advancedFilters { grid-template-columns: minmax(0,1fr); }
   .customDates { display: grid; grid-template-columns: 1fr 1fr; }
   .customDates label { width: 100%; }
@@ -287,6 +318,8 @@
   .savePreset { grid-column: 1; grid-row: auto; }
   .savePreset { width: 100%; justify-content: center; }
   .kpiGrid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .yearPanel > header { align-items: start; flex-direction: column; }
+  .yearRows dl { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .kpiCard { min-height: 145px; padding: 14px; border-radius: 16px; }
   .kpiCard > strong { font-size: 31px; }
   .panel { padding: 15px; border-radius: 17px; }

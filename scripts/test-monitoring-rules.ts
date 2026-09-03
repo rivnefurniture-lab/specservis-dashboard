@@ -8,6 +8,11 @@ import {
   transliterateMonitoringText,
   type MonitoringRuleSet,
 } from "../src/lib/monitoring-rules";
+import {
+  collapseDirectionRows,
+  directionsForAccount,
+  expandDirectionGroups,
+} from "../src/lib/tender-scope";
 
 assert.equal(
   normalizeMonitoringText("  ПРОЕКТНО–кошторисна, документація!  "),
@@ -16,6 +21,12 @@ assert.equal(
 assert.equal(normalizeMonitoringText("Кондеціонер"), "кондиціонер");
 assert.equal(transliterateMonitoringText("Тепловий насос"), "teplovyy nasos");
 assert.equal(stemMonitoringText("кондиціонерами"), stemMonitoringText("кондиціонер"));
+assert.deepEqual(expandDirectionGroups(["construction"]), ["construction", "design", "Капбудівництво"]);
+assert.ok(directionsForAccount("Сервіс").includes("conditioning"));
+assert.deepEqual(collapseDirectionRows([
+  { id: "conditioning", slug: "conditioning", label: "Кондиціонування", primary: true },
+  { id: "ventilation", slug: "ventilation", label: "Вентиляція", primary: false },
+]), [{ id: "service-climate", slug: "service-climate", label: "Сервіс і кондиціонування", primary: true }]);
 
 assert.equal(matchesCpvRule("45331220-4", { code: "45300000", includeDescendants: true }), true);
 assert.equal(matchesCpvRule("45331220-4", { code: "45300000", includeDescendants: false }), false);

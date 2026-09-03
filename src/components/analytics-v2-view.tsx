@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bookmark,
+  Download,
   CalendarDays,
   ChevronRight,
   CircleHelp,
@@ -18,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import styles from "./analytics-v2-view.module.css";
+import { directionGroupIdFor, TENDER_DIRECTION_GROUPS } from "@/lib/tender-scope";
 import type {
   AnalyticsV2Filters as EngineFilters,
   AnalyticsV2Result,
@@ -140,6 +142,16 @@ type AnalyticsV2ViewData = {
   matrix: {
     cells: AnalyticsMatrixCell[];
   };
+  yearly: Array<{
+    year: string;
+    tenders: number;
+    lots: number;
+    participations: number;
+    wins: number;
+    contracts: number;
+    winRate: number | null;
+    contractValueUah: number;
+  }>;
 };
 
 export type AnalyticsV2Response = {
@@ -169,6 +181,7 @@ export type AnalyticsV2Response = {
     suppliers?: Array<{ id: string; name: string }>;
   };
   result: AnalyticsV2Result;
+  yearly?: AnalyticsV2ViewData["yearly"];
   truncated?: {
     suppliers?: boolean;
     matrix?: boolean;
@@ -179,7 +192,8 @@ export type AnalyticsV2Response = {
 
 type FilterState = {
   dateLens: "publication" | "award" | "contract";
-  period: "30d" | "90d" | "year" | "custom";
+  period: "all" | "30d" | "90d" | "year" | "custom";
+  audience: "all" | "ours" | "competitors";
   from: string;
   to: string;
   scope: "monitoring" | "expanded";
@@ -222,7 +236,8 @@ type SavedPreset = { id: string; name: string; filters: FilterState };
 
 const defaultFilters: FilterState = {
   dateLens: "publication",
-  period: "90d",
+  period: "all",
+  audience: "all",
   from: "",
   to: "",
   scope: "monitoring",
@@ -338,11 +353,15 @@ function queryOf(filters: FilterState) {
   if (filters.period !== "custom") {
     to = isoDay(today);
     const start = new Date(today);
-    if (filters.period === "year") start.setUTCMonth(0, 1);
+    if (filters.period === "all") {
+      from = "2023-01-01";
+      start.setUTCFullYear(2023, 0, 1);
+    } else if (filters.period === "year") start.setUTCMonth(0, 1);
     else start.setUTCDate(start.getUTCDate() - (filters.period === "30d" ? 29 : 89));
-    from = isoDay(start);
+    if (filters.period !== "all") from = isoDay(start);
   }
   params.set("dateLens", filters.dateLens);
+  params.set("audience", filters.audience);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
   if (filters.department) params.set("direction", filters.department);
@@ -517,7 +536,7 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
         : []),
     ],
     facets: {
-      department: options(payload.facets.directions),
+      department: TENDER_DIRECTION_GROUPS.map((group) => ({ value: group.id, label: group.label })),
       procedure: options(payload.facets.procedures),
       category: options(payload.facets.categories),
       status: options(payload.facets.statuses),
@@ -546,6 +565,7 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
     ],
     participants: { total: payload.truncated?.totals?.drilldown ?? participants.length, items: participants },
     matrix: { cells: matrix },
+    yearly: payload.yearly ?? [],
   };
 }
 
@@ -567,7 +587,8 @@ function normalizedPresetFilters(value: unknown): FilterState {
     if (typeof record[key] === "string") Object.assign(next, { [key]: record[key] });
   }
   if (!dateLenses.some((lens) => lens.id === next.dateLens)) next.dateLens = defaultFilters.dateLens;
-  if (!(["30d", "90d", "year", "custom"] as string[]).includes(next.period)) next.period = defaultFilters.period;
+  if (!(["all", "30d", "90d", "year", "custom"] as string[]).includes(next.period)) next.period = defaultFilters.period;
+  if (!(["all", "ours", "competitors"] as string[]).includes(next.audience)) next.audience = defaultFilters.audience;
   if (!(["monitoring", "expanded"] as string[]).includes(next.scope)) next.scope = defaultFilters.scope;
   return next;
 }
@@ -658,7 +679,10 @@ export function AnalyticsV2View({
   endpoint?: string;
   initialDirection?: string | null;
 }) {
-  const [baseFilters] = useState<FilterState>(() => ({ ...defaultFilters, department: initialDirection ?? "" }));
+  const [baseFilters] = useState<FilterState>(() => ({
+    ...defaultFilters,
+    department: directionGroupIdFor(initialDirection) ?? "",
+  }));
   const [data, setData] = useState<AnalyticsV2ViewData | null>(() => initialData ? normalizeResponse(initialData) : null);
   const [draft, setDraft] = useState<FilterState>(baseFilters);
   const [applied, setApplied] = useState<FilterState>(baseFilters);
@@ -811,14 +835,21 @@ export function AnalyticsV2View({
   const buyers = useMemo(() => [...new Map(data?.matrix.cells.map((cell) => [cell.buyerId, { id: cell.buyerId, name: cell.buyer }]) ?? []).values()].slice(0, 12), [data]);
   const matrixMap = useMemo(() => new Map(data?.matrix.cells.map((cell) => [cell.id, cell]) ?? []), [data]);
   const hasRows = Boolean(data?.participants.items.length || data?.matrix.cells.length);
+  const displayKpis = useMemo(() => {
+    const preferred = ["tenders", "participations", "wins", "win-rate", "contracts", "contracts-UAH"];
+    const selected = preferred.flatMap((id) => data?.kpis.find((kpi) => kpi.id === id) ?? []);
+    return selected.length ? selected : (data?.kpis.slice(0, 6) ?? []);
+  }, [data]);
+  const maxAnnualValue = Math.max(1, ...(data?.yearly.map((row) => row.contractValueUah) ?? [1]));
+  const exportHref = `${endpoint}?${queryOf(applied).toString()}&format=xlsx`;
 
   return (
     <div className={styles.analytics} aria-busy={loading}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>АНАЛІТИКА ЗАКУПІВЕЛЬ</span>
-          <h1>Ринок, учасники та договори в одному запиті</h1>
-          <p>Перемикайте часову лінзу, звужуйте зріз і переходьте від показника до фактичної пари постачальник × замовник.</p>
+          <span className={styles.eyebrow}>АНАЛІТИКА РИНКУ</span>
+          <h1>Ринок за роками</h1>
+          <p>Обсяг ринку, наші результати та конкуренти — без зайвих технічних блоків.</p>
           <div className={styles.heroMeta}>
             <span><CalendarDays size={13} />{data?.period.from || data?.period.to ? `${data.period.from || "…"} — ${data.period.to || "…"}` : "Період визначає запит"}</span>
             <span><Database size={13} />Оновлено: {formatDate(data?.generatedAt ?? null)}</span>
@@ -826,16 +857,29 @@ export function AnalyticsV2View({
           </div>
         </div>
         <div className={styles.heroSignal}>
-          <span>РЕЖИМ ВИБІРКИ</span>
-          <strong>{applied.scope === "monitoring" ? "Моніторинг" : "Розширений"}</strong>
-          <small>{applied.scope === "monitoring" ? "Правила регулярного спостереження" : "Ширше коло для дослідження"}</small>
+          <span>ЗАРАЗ ПОКАЗАНО</span>
+          <strong>{applied.audience === "ours" ? "Ми" : applied.audience === "competitors" ? "Конкуренти" : "Весь ринок"}</strong>
+          <small>{applied.department ? TENDER_DIRECTION_GROUPS.find((group) => group.id === applied.department)?.label : "Обидва напрямки"}</small>
         </div>
       </section>
 
       <form className={styles.filterShell} onSubmit={applyFilters}>
         <div className={styles.filterTop}>
+          <fieldset className={styles.scopeToggle}>
+            <legend>Кого показати</legend>
+            <button type="button" className={draft.audience === "all" ? styles.active : ""} onClick={() => update("audience", "all")}>Весь ринок</button>
+            <button type="button" className={draft.audience === "ours" ? styles.active : ""} onClick={() => update("audience", "ours")}>Ми</button>
+            <button type="button" className={draft.audience === "competitors" ? styles.active : ""} onClick={() => update("audience", "competitors")}>Конкуренти</button>
+          </fieldset>
+          <label className={styles.compactField}>
+            <span>Напрямок</span>
+            <select value={draft.department} onChange={(event) => update("department", event.target.value)}>
+              <option value="">Обидва напрямки</option>
+              {TENDER_DIRECTION_GROUPS.map((group) => <option value={group.id} key={group.id}>{group.label}</option>)}
+            </select>
+          </label>
           <fieldset className={styles.segmented}>
-            <legend>Часова лінза</legend>
+            <legend>Рахувати за датою</legend>
             {dateLenses.map((lens) => (
               <button key={lens.id} type="button" className={draft.dateLens === lens.id ? styles.active : ""} onClick={() => update("dateLens", lens.id)} title={lens.hint}>
                 {lens.label}
@@ -845,20 +889,17 @@ export function AnalyticsV2View({
           <label className={styles.compactField}>
             <span>Період</span>
             <select value={draft.period} onChange={(event) => update("period", event.target.value as FilterState["period"])}>
+              <option value="all">Усі роки</option>
               <option value="30d">30 днів</option>
               <option value="90d">90 днів</option>
               <option value="year">Поточний рік</option>
               <option value="custom">Власний період</option>
             </select>
           </label>
-          <fieldset className={styles.scopeToggle}>
-            <legend>Охоплення</legend>
-            <button type="button" className={draft.scope === "monitoring" ? styles.active : ""} onClick={() => update("scope", "monitoring")}>Моніторинг</button>
-            <button type="button" className={draft.scope === "expanded" ? styles.active : ""} onClick={() => update("scope", "expanded")}>Розширене</button>
-          </fieldset>
           <button type="button" className={styles.filterToggle} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}>
-            <SlidersHorizontal size={16} /> Усі фільтри {activeFilterCount ? <b>{activeFilterCount}</b> : null}
+            <SlidersHorizontal size={16} /> Додаткові фільтри {activeFilterCount ? <b>{activeFilterCount}</b> : null}
           </button>
+          <a className={styles.exportButton} href={exportHref}><Download size={16} />Excel</a>
           <button type="submit" className={styles.applyButton} disabled={loading}>{loading ? <LoaderCircle className={styles.spin} size={16} /> : <Search size={16} />}Застосувати</button>
         </div>
 
@@ -871,7 +912,7 @@ export function AnalyticsV2View({
 
         {filtersOpen ? (
           <div className={styles.advancedFilters}>
-            <FacetInput id="analytics-department" label="Напрямок" value={draft.department} options={data?.facets.department} placeholder="Усі напрямки" onChange={(value) => update("department", value)} />
+            <label className={styles.field}><span>Охоплення</span><select value={draft.scope} onChange={(event) => update("scope", event.target.value as FilterState["scope"])}><option value="monitoring">Наші правила моніторингу</option><option value="expanded">Інші ДК і предметні терміни</option></select></label>
             <FacetInput id="analytics-cpv" label="CPV" value={draft.cpv} options={data?.facets.cpv} placeholder="Код або група CPV" onChange={(value) => update("cpv", value)} />
             <FacetInput id="analytics-subject" label="Предмет" value={draft.subject} options={data?.facets.subject} placeholder="Слова у предметі" onChange={(value) => update("subject", value)} />
             <FacetInput id="analytics-category" label="Категорія" value={draft.category} options={data?.facets.category} placeholder="Усі категорії" onChange={(value) => update("category", value)} />
@@ -937,20 +978,30 @@ export function AnalyticsV2View({
         <div className={styles.loadingState}><LoaderCircle className={styles.spin} size={28} /><b>Зводимо дані…</b><span>Збираємо закупівлі, участі, договори й оплати.</span></div>
       ) : data ? (
         <>
-          <section className={styles.sourceStrip} aria-label="Стан джерел">
-            {data.sources.map((source) => (
-              <article key={source.id} className={`${styles.sourceCard} ${styles[source.state]}`}>
-                <span className={styles.sourceState}>{source.state === "live" ? "LIVE" : source.state === "snapshot" ? "ЗРІЗ" : source.state === "partial" ? "ЧАСТКОВО" : "НЕМАЄ"}</span>
-                <strong>{source.label}</strong>
-                <small>{source.updatedAt ? `Станом на ${formatDate(source.updatedAt)}` : "Дата джерела відсутня"}</small>
-                {source.note ? <p>{source.note}</p> : null}
-              </article>
-            ))}
-            {!data.sources.length ? <div className={styles.noSource}><Database size={18} /><span>API не повернув опис джерел. Значення нижче не можна вважати підтвердженими без provenance.</span></div> : null}
+          <div className={styles.dataStatus}><Database size={15} /><span>{data.sources[0]?.label || "Prozorro"}</span><small>Оновлено {formatDate(data.generatedAt)}</small></div>
+
+          <section className={styles.yearPanel} aria-label="Ринок за роками">
+            <header><div><span>ПОРІВНЯННЯ РОКІВ</span><h2>Як змінювався ринок</h2></div><small>Сума договорів у гривні; точні значення видно в рядках</small></header>
+            <div className={styles.yearRows}>
+              {data.yearly.map((row) => (
+                <article key={row.year}>
+                  <strong>{row.year}</strong>
+                  <div className={styles.yearBar} title={`${integerFormatter.format(row.contractValueUah)} грн`}><i style={{ width: `${Math.max(2, row.contractValueUah / maxAnnualValue * 100)}%` }} /></div>
+                  <dl>
+                    <div><dt>Лотів</dt><dd>{integerFormatter.format(row.lots)}</dd></div>
+                    <div><dt>Участей</dt><dd>{integerFormatter.format(row.participations)}</dd></div>
+                    <div><dt>Перемог</dt><dd>{integerFormatter.format(row.wins)}</dd></div>
+                    <div><dt>Договорів</dt><dd>{integerFormatter.format(row.contracts)}</dd></div>
+                    <div><dt>Сума договорів</dt><dd>{integerFormatter.format(row.contractValueUah)} грн</dd></div>
+                  </dl>
+                </article>
+              ))}
+              {!data.yearly.length ? <div className={styles.emptyInline}>За вибраним періодом немає річних даних.</div> : null}
+            </div>
           </section>
 
           <section className={styles.kpiGrid} aria-label="Ключові показники">
-            {data.kpis.map((kpi) => (
+            {displayKpis.map((kpi) => (
               <article key={kpi.id} className={styles.kpiCard}>
                 <span>{kpi.label}</span>
                 <strong className={kpi.value === null ? styles.nullValue : ""}>{formatNumber(kpi.value, kpi.format, kpi.currency)}</strong>
@@ -958,7 +1009,7 @@ export function AnalyticsV2View({
                 <SourceLine source={kpi.source} confidence={kpi.confidence} />
               </article>
             ))}
-            {!data.kpis.length ? <div className={styles.emptyInline}>Для цього зрізу KPI не повернуто.</div> : null}
+            {!displayKpis.length ? <div className={styles.emptyInline}>Для цього зрізу немає показників.</div> : null}
           </section>
 
           {data.leaders.length ? (
@@ -979,7 +1030,9 @@ export function AnalyticsV2View({
             </section>
           ) : (
             <>
-              <section className={styles.panel}>
+              <details className={styles.detailDisclosure}>
+                <summary><span><b>Участі та договори</b><small>{integerFormatter.format(data.participants.total)} детальних записів</small></span><ChevronRight size={17} /></summary>
+                <section className={styles.panel}>
                 <header className={styles.panelHead}>
                   <div><span>УЧАСНИКИ · ФАКТИ</span><h2>Таблиця участей</h2><p>{integerFormatter.format(data.participants.total)} записів у відповіді</p></div>
                   <TableProperties size={22} aria-hidden="true" />
@@ -1015,9 +1068,12 @@ export function AnalyticsV2View({
                   </table>
                   {!data.participants.items.length ? <div className={styles.emptyInline}>У відповіді немає рядків участей.</div> : null}
                 </div>
-              </section>
+                </section>
+              </details>
 
-              <section className={styles.matrixLayout}>
+              <details className={styles.detailDisclosure}>
+                <summary><span><b>Постачальники та замовники</b><small>Матриця звʼязків із переходом до закупівель</small></span><ChevronRight size={17} /></summary>
+                <section className={styles.matrixLayout}>
                 <div className={styles.panel}>
                   <header className={styles.panelHead}>
                     <div><span>ЗВʼЯЗКИ · DRILLDOWN</span><h2>Постачальник × замовник</h2><p>Натисніть фактичну комірку. На екрані — до 20 постачальників × 12 замовників із порядку API.</p></div>
@@ -1085,7 +1141,8 @@ export function AnalyticsV2View({
                     <div className={styles.drillPlaceholder}><TableProperties size={25} /><b>Оберіть комірку матриці</b><span>Тут зʼявляться лише факти, які повернув API.</span></div>
                   )}
                 </aside>
-              </section>
+                </section>
+              </details>
             </>
           )}
         </>

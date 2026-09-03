@@ -9,22 +9,14 @@ import {
 } from "@/lib/monitoring-v2-store";
 import type { MonitoringV2Filters } from "@/lib/monitoring-v2-types";
 import { publishMonitoringRuleEntry } from "@/lib/monitoring-rule-admin";
+import { directionsForAccount, expandDirectionGroups, TENDER_DIRECTION_GROUPS } from "@/lib/tender-scope";
+import { monitoringWorkbook } from "@/lib/tender-excel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const directionAccess: Record<string, string[]> = {
-  "Капбудівництво": ["construction", "design", "Капбудівництво"],
-  "Кондиціонування": ["conditioning", "ventilation", "Кондиціонування"],
-  "Сервіс": ["Сервіс"],
-};
-const defaultMonitoringDirections = [
-  "construction", "design", "conditioning", "ventilation",
-  // Keep already imported monitoring rows visible while the versioned
-  // classifier refreshes their canonical direction IDs in the background.
-  "Капбудівництво", "Кондиціонування",
-];
+const defaultMonitoringDirections = TENDER_DIRECTION_GROUPS.flatMap((group) => group.directions);
 
 const array = (params: URLSearchParams, name: string) => params.getAll(name)
   .flatMap((value) => value.split(","))
@@ -41,8 +33,8 @@ async function account() {
 
 function filtersFrom(request: Request, direction: string | null, isOwner: boolean): MonitoringV2Filters {
   const params = new URL(request.url).searchParams;
-  const requestedDirections = array(params, "direction");
-  const allowed = direction ? directionAccess[direction] ?? [direction] : [];
+  const requestedDirections = expandDirectionGroups(array(params, "direction"));
+  const allowed = directionsForAccount(direction);
   const directions = isOwner
     ? requestedDirections.length ? requestedDirections : defaultMonitoringDirections
     : requestedDirections.length ? requestedDirections.filter((item) => allowed.includes(item)) : allowed;
@@ -83,8 +75,21 @@ export async function GET(request: Request) {
   const viewer = await account();
   if (!viewer) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const payload = await loadMonitoringV2(filtersFrom(request, viewer.direction, viewer.role === "owner"));
+    const exportRequested = new URL(request.url).searchParams.get("format") === "xlsx";
+    const filters = filtersFrom(request, viewer.direction, viewer.role === "owner");
+    if (exportRequested) filters.pageSize = 50_000;
+    const payload = await loadMonitoringV2(filters, exportRequested ? { maxPageSize: 50_000 } : undefined);
     if (!payload) return NextResponse.json({ error: "Database is not configured" }, { status: 503 });
+    if (exportRequested) {
+      const body = await monitoringWorkbook(payload.rows);
+      return new NextResponse(body, {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="monitoring-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
     console.info("[monitoring-v2] request completed", {
       durationMs: Math.round(performance.now() - startedAt),
       rows: payload.rows.length,
@@ -115,7 +120,7 @@ export async function PATCH(request: Request) {
       ? body.kind as (typeof kinds)[number] : null;
     const directionId = typeof body.directionId === "string" ? body.directionId.trim().slice(0, 100) : "";
     const value = typeof body.value === "string" ? body.value.trim().slice(0, 300) : "";
-    const allowedDirections = viewer.direction ? directionAccess[viewer.direction] ?? [] : [];
+    const allowedDirections = directionsForAccount(viewer.direction);
     if (!kind || !directionId || !value || (viewer.role !== "owner" && !allowedDirections.includes(directionId))) {
       return NextResponse.json({ error: "Invalid rule entry" }, { status: 400 });
     }
@@ -140,6 +145,9 @@ export async function PATCH(request: Request) {
   const suggestedValue = typeof body?.suggestedRule === "string" ? body.suggestedRule.trim().slice(0, 300) : "";
   if (!procurementId || !lotId || !monitoringReviewStatuses.includes(status as never)) {
     return NextResponse.json({ error: "Invalid review" }, { status: 400 });
+  }
+  if (status === "not_relevant" && !comment) {
+    return NextResponse.json({ error: "Comment is required when removing a lot from monitoring" }, { status: 400 });
   }
   const item = await saveMonitoringReview({
     procurementId,
