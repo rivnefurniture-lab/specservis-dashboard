@@ -344,6 +344,17 @@ function formatDate(value: string | null) {
   }).format(timestamp);
 }
 
+function humanizeWarning(value: string) {
+  if (/backfill|durable queue/i.test(value)) {
+    const queued = value.match(/\b\d[\d\s.,]*\b/)?.[0]?.trim();
+    return `Ще завантажується історія${queued ? `: залишилося ${queued} закупівель` : ""}. До завершення показники можуть змінитися.`;
+  }
+  if (/серверними лімітами|агрегати KPI/i.test(value)) {
+    return "Підсумки враховують усі дані. У детальних таблицях показано частину рядків.";
+  }
+  return value;
+}
+
 function queryOf(filters: FilterState) {
   const params = new URLSearchParams();
   const today = new Date();
@@ -529,12 +540,12 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
       updatedAt: meta.generatedAt ?? null,
       note: meta.complete === false ? "Неповне джерело: відсутні частина подій або полів." : null,
     }],
-    warnings: [
-      ...(meta.limitations ?? []),
+    warnings: [...new Set([
+      ...(meta.limitations ?? []).map(humanizeWarning),
       ...(payload.truncated && (payload.truncated.suppliers || payload.truncated.matrix || payload.truncated.drilldown)
         ? ["Підсумки враховують усі дані. У детальних таблицях показано частину рядків."]
         : []),
-    ],
+    ])],
     facets: {
       department: TENDER_DIRECTION_GROUPS.map((group) => ({ value: group.id, label: group.label })),
       procedure: options(payload.facets.procedures),
