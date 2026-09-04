@@ -59,12 +59,8 @@ function niceMaximum(value: number) {
   return step * magnitude;
 }
 
-export function InteractiveMetricChart({ title, description, seriesLabel, xAxisLabel, yAxisLabel, locale, points, variant, format, tone = "blue", onSelect }: {
+export function InteractiveMetricChart({ title, locale, points, variant, format, tone = "blue", onSelect }: {
   title: string;
-  description: string;
-  seriesLabel: string;
-  xAxisLabel: string;
-  yAxisLabel: string;
   locale: FinanceLocale;
   points: FinanceChartPoint[];
   variant: "bar" | "line";
@@ -87,8 +83,7 @@ export function InteractiveMetricChart({ title, description, seriesLabel, xAxisL
     ? { chart: "Наведите для значения, нажмите для расшифровки.", open: "Открыть состав показателя.", click: "Нажмите для расшифровки" }
     : { chart: "Наведіть для значення, натисніть для деталізації.", open: "Відкрити склад показника.", click: "Натисніть для розшифровки" };
   return <article className={styles.chartCard}>
-    <header><h2>{title}</h2><p>{description}</p></header>
-    <div className={`${styles.chartLegend} ${toneClass}`}><span><i />{seriesLabel}</span><small>{yAxisLabel}</small></div>
+    <header><h2>{title}</h2></header>
     <div className={`${styles.chartCanvas} ${toneClass}`} onMouseLeave={() => setHovered(null)}>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}. ${interaction.chart}`}>
         <line x1={left} x2={left} y1={top} y2={bottom} className={styles.chartAxis} />
@@ -107,7 +102,6 @@ export function InteractiveMetricChart({ title, description, seriesLabel, xAxisL
             <text x={x(index)} y="270" textAnchor="middle" className={styles.chartLabel}>{point.label}</text>
           </g>;
         })}
-        <text x={right} y="304" textAnchor="end" className={styles.axisTitle}>{xAxisLabel}</text>
       </svg>
       {active ? <div className={styles.chartTooltip} style={{ left: `${tooltipPosition}%`, transform: tooltipTransform }}><span>{active.label}</span><strong>{format(active.value)}</strong><small>{interaction.click}</small></div> : null}
     </div>
