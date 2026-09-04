@@ -136,7 +136,7 @@
 .presetChip button:last-child:hover { color: var(--owner-red, #e11732); background: #fff0f2; }
 .presetName input { height: 34px; }
 .analytics .savePreset { height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 9px; color: white; background: var(--owner-blue, #25216f); font-size: 9px; font-weight: 760; cursor: pointer; }
-.analytics .savePreset:disabled { color: #6d7183; background: #e7e8ef; opacity: 1; cursor: default; }
+.analytics .savePreset:disabled { color: #5b5f70; background: #e7e8ef; opacity: 1; cursor: default; }
 
 .errorBanner,
 .warning { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 14px; font-size: 10px; }
