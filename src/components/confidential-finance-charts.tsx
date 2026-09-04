@@ -80,6 +80,8 @@ export function InteractiveMetricChart({ title, description, seriesLabel, xAxisL
   const y = (value: number) => bottom - value / maximum * (bottom - top);
   const barWidth = Math.min(58, span * .52);
   const active = hovered === null ? null : points[hovered] ?? null;
+  const tooltipPosition = hovered === null ? 50 : x(hovered) / width * 100;
+  const tooltipTransform = tooltipPosition > 72 ? "translateX(-100%)" : tooltipPosition < 28 ? "translateX(0)" : "translateX(-50%)";
   const toneClass = tone === "green" ? styles.greenChart : tone === "orange" ? styles.orangeChart : tone === "red" ? styles.redChart : styles.blueChart;
   const interaction = locale === "ru"
     ? { chart: "Наведите для значения, нажмите для расшифровки.", open: "Открыть состав показателя.", click: "Нажмите для расшифровки" }
@@ -107,7 +109,7 @@ export function InteractiveMetricChart({ title, description, seriesLabel, xAxisL
         })}
         <text x={right} y="304" textAnchor="end" className={styles.axisTitle}>{xAxisLabel}</text>
       </svg>
-      {active ? <div className={styles.chartTooltip} style={{ left: `${Math.min(88, Math.max(12, x(hovered!) / width * 100))}%` }}><span>{active.label}</span><strong>{format(active.value)}</strong><small>{interaction.click}</small></div> : null}
+      {active ? <div className={styles.chartTooltip} style={{ left: `${tooltipPosition}%`, transform: tooltipTransform }}><span>{active.label}</span><strong>{format(active.value)}</strong><small>{interaction.click}</small></div> : null}
     </div>
   </article>;
 }
