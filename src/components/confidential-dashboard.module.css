@@ -53,6 +53,7 @@
 .metricLine { fill:none; stroke:var(--chart-color); stroke-width:4; stroke-linecap:round; stroke-linejoin:round; }
 .metricPoint { fill:var(--chart-color); stroke:#fff; stroke-width:3; cursor:pointer; transition:r .12s ease; }
 .chartCanvas g:hover .metricBar,.chartCanvas g:focus .metricBar { filter:brightness(1.12); }
+.metricValue { fill:#34374b; font:760 10px var(--font-geist-sans); pointer-events:none; }
 .chartLabel { fill:#73778c; font:650 13px var(--font-geist-sans); }
 .axisTick { fill:#85899a; font:620 11px var(--font-geist-sans); }
 .blueChart { --chart-color:var(--finance-blue); }

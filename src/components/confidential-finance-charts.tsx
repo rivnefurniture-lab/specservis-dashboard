@@ -96,9 +96,11 @@ export function InteractiveMetricChart({ title, locale, points, variant, format,
         {points.map((point, index) => {
           const value = point.value ?? 0;
           const pointY = y(value);
+          const valueLabelY = pointY <= top + 18 ? pointY + 20 : pointY - 10;
           return <g key={point.id} role="button" tabIndex={0} aria-label={`${point.label}: ${format(point.value)}. ${interaction.open}`} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} onClick={() => onSelect(point)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(point); } }}>
             <rect x={left + span * index} y={top} width={span} height={bottom - top + 48} fill="transparent" className={styles.chartHitbox} />
             {variant === "bar" ? <rect x={x(index) - barWidth / 2} y={pointY} width={barWidth} height={Math.max(bottom - pointY, 2)} rx="8" className={styles.metricBar} /> : point.value !== null ? <circle cx={x(index)} cy={pointY} r={hovered === index ? 7 : 5} className={styles.metricPoint} /> : null}
+            {point.value !== null ? <text x={x(index)} y={valueLabelY} textAnchor="middle" className={styles.metricValue}>{format(point.value)}</text> : null}
             <text x={x(index)} y="270" textAnchor="middle" className={styles.chartLabel}>{point.label}</text>
           </g>;
         })}
