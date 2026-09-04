@@ -1,118 +1,146 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarRange, ChevronDown, CircleAlert, Filter, LoaderCircle, LockKeyhole, RefreshCw, X } from "lucide-react";
-import { buildConfidentialDashboard } from "@/lib/confidential-dashboard";
+import { createPortal } from "react-dom";
+import { CalendarRange, CircleAlert, LoaderCircle, MousePointerClick, RefreshCw, X } from "lucide-react";
+import { buildConfidentialDashboard, type ComparableTurnover, type TurnoverMonth } from "@/lib/confidential-dashboard";
 import type { ConfidentialTurnoverDataset } from "@/lib/confidential-turnover";
-import { aggregateEntity, CumulativeTurnoverChart, growth, money, monthLabel, MonthlyTurnoverChart, number, percent, points, preciseMoney, WorkforceEconomicsChart, type EntityId } from "./confidential-finance-charts";
+import { CompanyPieChart, entityValue, growth, InteractiveMetricChart, money, monthLabel, oneDecimal, percent, SourceBars, wholeNumber, type CompanySlice, type EntityId, type FinanceChartPoint, type FinanceMetric } from "./confidential-finance-charts";
 import styles from "./confidential-dashboard.module.css";
 
+type ViewMode = "current" | "compare";
+type Detail = { metric: FinanceMetric; point: FinanceChartPoint };
+
 const ukDate = new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "long", year: "numeric", timeZone: "Europe/Kyiv" });
-const wholeNumber = new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 0 });
 const monthNames = ["січень", "лютий", "березень", "квітень", "травень", "червень", "липень", "серпень", "вересень", "жовтень", "листопад", "грудень"];
 const monthShort = ["січ", "лют", "бер", "квіт", "трав", "черв", "лип", "серп", "вер", "жовт", "лист", "груд"];
-const entityColors = ["#2f2a80", "#4679b9", "#33a06f", "#db8b48", "#8b6bb0", "#58a5a8", "#c65e67"];
-
-type AuditFilter = "all" | "missing-payroll" | "payroll-above-turnover" | "decline";
-type AuditSort = "newest" | "turnover-desc" | "growth-asc" | "productivity-desc" | "payroll-share-desc";
-
-const entityOptions: Array<{ id: EntityId; label: string }> = [
-  { id: "all", label: "Уся група" }, { id: "specservis", label: "Спецсервіс" },
-  { id: "promtech", label: "Промтехгруп" }, { id: "refkey", label: "Рефкей" },
-  { id: "naryshkov", label: "ФОП Наришков" }, { id: "pashkov", label: "ФОП Пашков" },
+const entityDefinitions: Array<{ id: EntityId; label: string }> = [
+  { id: "specservis", label: "Спецсервіс" },
+  { id: "promtech", label: "Промтехгруп" },
+  { id: "refkey", label: "Рефкей" },
+  { id: "naryshkov", label: "ФОП Наришков" },
+  { id: "pashkov", label: "ФОП Пашков" },
   { id: "danilenko", label: "ФОП Даниленко" },
 ];
 
-function deltaTone(value: number | null) { return value === null ? styles.muted : value >= 0 ? styles.positive : styles.negative; }
-function monthIndex(period: string | null) { return period ? Number(period.slice(5, 7)) - 1 : 0; }
-function periodRangeLabel(from: string | null, to: string | null) { return !from || !to ? "немає зіставного періоду" : `${monthLabel(from)} — ${monthLabel(to)}`; }
-function compactPeriodLabel(from: string | null, to: string | null) {
-  if (!from || !to) return "—";
-  const fromYear = from.slice(0, 4), toYear = to.slice(0, 4), years = fromYear === toYear ? toYear : `${fromYear}–${toYear.slice(2)}`;
-  return `${monthShort[monthIndex(from)]}–${monthShort[monthIndex(to)]} ${years}`;
+const sum = (values: Array<number | null | undefined>) => values.reduce<number>((total, value) => total + (value ?? 0), 0);
+function average(values: Array<number | null>) { const known = values.filter((value): value is number => value !== null); return known.length ? sum(known) / known.length : null; }
+function monthNumber(period: string) { return Number(period.slice(5, 7)); }
+function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
+function rangeLabel(period: ComparableTurnover) { return `${monthShort[monthNumber(period.from) - 1]}–${monthShort[monthNumber(period.to) - 1]} ${period.to.slice(0, 4)}`; }
+function fullRangeLabel(period: ComparableTurnover) { return `${titleCase(monthNames[monthNumber(period.from) - 1])}–${monthNames[monthNumber(period.to) - 1]} ${period.to.slice(0, 4)}`; }
+function valueForMetric(period: ComparableTurnover, metric: FinanceMetric) {
+  if (metric === "turnover") return period.baseTurnover;
+  if (metric === "productivity") return period.lastTurnoverPerFte;
+  if (metric === "averageProductivity") return period.turnoverPerFte;
+  if (metric === "fte") return period.lastFte;
+  return period.avgFte;
 }
-function periodTitle(from: string | null, to: string | null) {
-  if (!from || !to) return "обраний період";
-  return from === to ? monthNames[monthIndex(from)] : `${monthNames[monthIndex(from)]}–${monthNames[monthIndex(to)]}`;
+function formatterFor(metric: FinanceMetric) {
+  if (metric === "averageFte") return (value: number | null) => value === null ? "—" : wholeNumber.format(value);
+  if (metric === "fte") return (value: number | null) => value === null ? "—" : oneDecimal.format(value);
+  return money;
 }
-function displayPeriodTitle(from: string | null, to: string | null) { const value = periodTitle(from, to); return `${value.charAt(0).toUpperCase()}${value.slice(1)}`; }
-function valueCell(value: number | null) { return value === null ? "—" : wholeNumber.format(value); }
+
+function currentPoints(months: TurnoverMonth[], metric: FinanceMetric): FinanceChartPoint[] {
+  return months.map((month, index) => {
+    const prefix = months.slice(0, index + 1);
+    const value = metric === "turnover" ? month.baseTurnover
+      : metric === "productivity" ? month.turnoverPerFte
+        : metric === "averageProductivity" ? average(prefix.map((item) => item.turnoverPerFte))
+          : metric === "fte" ? month.fte : average(prefix.map((item) => item.fte));
+    return { id: `${metric}:${month.period}`, label: monthShort[monthNumber(month.period) - 1], value, months: metric === "averageProductivity" || metric === "averageFte" ? prefix : [month] };
+  });
+}
+
+function comparisonPoints(periods: ComparableTurnover[], metric: FinanceMetric): FinanceChartPoint[] {
+  return periods.map((period) => ({
+    id: `${metric}:${period.id}`,
+    label: period.to.slice(0, 4),
+    value: valueForMetric(period, metric),
+    months: metric === "productivity" || metric === "fte" ? period.monthly.slice(-1) : period.monthly,
+  }));
+}
+
+function companySlices(months: TurnoverMonth[], metric: "turnover" | "productivity" | "averageProductivity"): CompanySlice[] {
+  const values = entityDefinitions.map((entity) => {
+    const value = metric === "turnover"
+      ? sum(months.map((month) => entityValue(month, entity.id)))
+      : average(months.map((month) => month.fte ? entityValue(month, entity.id) / month.fte : null)) ?? 0;
+    return { ...entity, value };
+  }).filter((item) => item.value > 0);
+  const total = sum(values.map((item) => item.value));
+  return values.map((item) => ({ ...item, share: total ? item.value / total : 0 })).sort((left, right) => right.value - left.value);
+}
+
+function metricTitle(metric: FinanceMetric) {
+  if (metric === "turnover") return "З чого складається оборот";
+  if (metric === "productivity") return "Як розраховано оборот на працівника";
+  if (metric === "averageProductivity") return "Як розраховано середній оборот на працівника";
+  if (metric === "fte") return "Кількість повних робочих ставок";
+  return "Як розрахована середня кількість працівників";
+}
+
+function metricExplanation(metric: FinanceMetric, months: TurnoverMonth[]) {
+  if (metric === "turnover") return `Сума обороту компаній за ${months.length === 1 ? monthLabel(months[0].period) : `${months.length} місяців`}.`;
+  if (metric === "productivity") return "Оборот місяця поділено на кількість повних робочих ставок цього місяця.";
+  if (metric === "averageProductivity") return `Середнє з ${months.length} місячних значень обороту на одного працівника.`;
+  if (metric === "fte") return "Пряме значення кількості повних робочих ставок із вихідного файлу.";
+  return `Середнє з ${months.length} місячних значень кількості повних робочих ставок.`;
+}
+
+function DetailModal({ detail, onClose }: { detail: Detail; onClose: () => void }) {
+  const { metric, point } = detail;
+  const isMoney = metric === "turnover" || metric === "productivity" || metric === "averageProductivity";
+  const formatter = formatterFor(metric);
+  const slices = isMoney ? companySlices(point.months, metric) : [];
+  const sourceRows = point.months.map((month) => ({ id: month.period, label: monthLabel(month.period), value: metric === "averageProductivity" ? month.turnoverPerFte : month.fte }));
+  const sourceFormatter = metric === "fte" || metric === "averageFte" ? (value: number | null) => value === null ? "—" : oneDecimal.format(value) : formatter;
+  const lastMonth = point.months.at(-1) ?? null;
+  return <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={styles.detailModal} role="dialog" aria-modal="true" aria-labelledby="detail-title"><header><div><span>{point.label}</span><h2 id="detail-title">{metricTitle(metric)}</h2><p>{metricExplanation(metric, point.months)}</p></div><button type="button" onClick={onClose} aria-label="Закрити"><X size={20} /></button></header><div className={styles.detailValue}><span>Показник</span><strong>{formatter(point.value)}</strong></div>{isMoney ? <CompanyPieChart items={slices} total={sum(slices.map((item) => item.value))} format={formatter} /> : <SourceBars rows={sourceRows} format={sourceFormatter} selectedId={point.months.length === 1 ? point.months[0].period : undefined} />}{metric === "productivity" && lastMonth ? <div className={styles.formula}><span>{money(lastMonth.baseTurnover)}</span><i>÷</i><span>{oneDecimal.format(lastMonth.fte ?? 0)} працівника</span><i>=</i><b>{money(lastMonth.turnoverPerFte)}</b></div> : null}<footer>{isMoney ? "Coca-Cola та AB InBev не включені в оборот і його розподіл." : "FTE — кількість повних робочих ставок. Дві людини по пів ставки дорівнюють 1 FTE."}</footer></section></div>;
+}
 
 function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
-  const [rangeId, setRangeId] = useState("ytd");
-  const [entity, setEntity] = useState<EntityId>("all");
-  const [auditFilter, setAuditFilter] = useState<AuditFilter>("all");
-  const [auditSort, setAuditSort] = useState<AuditSort>("newest");
-  const model = useMemo(() => buildConfidentialDashboard(dataset.records, rangeId), [dataset.records, rangeId]);
-  const summary = model.summary, latest = model.months.at(-1) ?? null, history = model.history.slice(-4);
-  const currentComparable = model.history.at(-1) ?? null, previousComparable = model.history.at(-2) ?? null;
-  const missingPayrollMonths = model.months.filter((month) => month.payroll === null);
-  const selectedEntity = entityOptions.find((option) => option.id === entity) ?? entityOptions[0];
-  const selectedTotal = aggregateEntity(model.months, entity);
-  const priorTotal = model.comparisonMonths.length === model.months.length ? aggregateEntity(model.comparisonMonths, entity) : null;
-  const selectedGrowth = growth(selectedTotal, priorTotal);
-  const quickOptions = model.options.filter((option) => option.id === "ytd" || option.id === "12m");
-  const latestYear = latest?.period.slice(0, 4);
-  const archiveOptions = model.options.filter((option) => option.id !== "ytd" && option.id !== "12m" && option.id !== latestYear);
-  const priorByCurrentPeriod = new Map(model.comparisonMonths.map((month) => [`${Number(month.period.slice(0, 4)) + 1}${month.period.slice(4)}`, month]));
-  const auditedMonths = [...model.months].filter((month) => auditFilter === "all"
-    || (auditFilter === "missing-payroll" && month.payroll === null)
-    || (auditFilter === "payroll-above-turnover" && (month.payrollShare ?? 0) > 1)
-    || (auditFilter === "decline" && (growth(month.baseTurnover ?? 0, priorByCurrentPeriod.get(month.period)?.baseTurnover ?? null) ?? 0) < 0))
-    .sort((left, right) => auditSort === "turnover-desc" ? (right.baseTurnover ?? 0) - (left.baseTurnover ?? 0)
-      : auditSort === "growth-asc" ? (growth(left.baseTurnover ?? 0, priorByCurrentPeriod.get(left.period)?.baseTurnover ?? null) ?? Number.MAX_SAFE_INTEGER) - (growth(right.baseTurnover ?? 0, priorByCurrentPeriod.get(right.period)?.baseTurnover ?? null) ?? Number.MAX_SAFE_INTEGER)
-        : auditSort === "productivity-desc" ? (right.turnoverPerFte ?? -1) - (left.turnoverPerFte ?? -1)
-          : auditSort === "payroll-share-desc" ? (right.payrollShare ?? -1) - (left.payrollShare ?? -1) : right.period.localeCompare(left.period));
-  const comparisonPeriod = periodRangeLabel(previousComparable?.from ?? null, previousComparable?.to ?? null);
-  const strategicBreakdown = [
-    { label: "Coca-Cola · Промтехгруп", value: model.months.reduce((total, month) => total + (month.cocaColaPromtech ?? 0), 0) },
-    { label: "Coca-Cola · Спецсервіс", value: model.months.reduce((total, month) => total + (month.cocaColaSpecservis ?? 0), 0) },
-    { label: "AB InBev", value: model.months.reduce((total, month) => total + (month.abinbev ?? 0), 0) },
+  const [mode, setMode] = useState<ViewMode>("current");
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const model = useMemo(() => buildConfidentialDashboard(dataset.records, "ytd"), [dataset.records]);
+  const periods = model.history.slice(-4);
+  const current = periods.at(-1)!;
+  const previous = periods.at(-2) ?? null;
+  const latest = current.monthly.at(-1)!;
+  const latestYear = latest.period.slice(0, 4);
+  const periodMonths = current.monthly.length;
+  const pointSet = (metric: FinanceMetric) => mode === "current" ? currentPoints(current.monthly, metric) : comparisonPoints(periods, metric);
+  const open = (metric: FinanceMetric) => (point: FinanceChartPoint) => setDetail({ metric, point });
+  const kpis: Array<{ metric: FinanceMetric; label: string; value: number | null; note: string; delta: number | null }> = [
+    { metric: "turnover", label: "Оборот групи", value: current.baseTurnover, note: `За ${periodMonths} місяців`, delta: growth(current.baseTurnover, previous?.baseTurnover ?? null) },
+    { metric: "productivity", label: `Оборот на 1 працівника · ${monthNames[monthNumber(latest.period) - 1]}`, value: current.lastTurnoverPerFte, note: "Останній місяць періоду", delta: growth(current.lastTurnoverPerFte, previous?.lastTurnoverPerFte ?? null) },
+    { metric: "averageProductivity", label: `Оборот на 1 працівника за ${latestYear} рік (${periodMonths} міс.)`, value: current.turnoverPerFte, note: `Середнє за ${periodMonths} місяців`, delta: growth(current.turnoverPerFte, previous?.turnoverPerFte ?? null) },
+    { metric: "averageFte", label: "Середня кількість працівників", value: current.avgFte, note: "Повних робочих ставок", delta: growth(current.avgFte, previous?.avgFte ?? null) },
   ];
-  const refkeyCash = model.months.reduce((total, month) => total + (month.refkeyCash ?? 0), 0), specservisCash = model.months.reduce((total, month) => total + (month.specservisCash ?? 0), 0);
-  const currentPeriod = history.at(-1) ?? null, priorPeriod = history.at(-2) ?? null;
-  const headlineMetrics = currentPeriod ? [
-    { label: "Оборот групи", value: money(currentPeriod.baseTurnover), note: `За ${summary.months} місяців`, delta: growth(currentPeriod.baseTurnover, priorPeriod?.baseTurnover ?? null) },
-    { label: `Оборот на 1 працівника · ${monthNames[monthIndex(currentPeriod.to)]}`, value: money(currentPeriod.lastTurnoverPerFte), note: "Останній місяць періоду", delta: growth(currentPeriod.lastTurnoverPerFte, priorPeriod?.lastTurnoverPerFte ?? null) },
-    { label: "У середньому на 1 працівника", value: money(currentPeriod.turnoverPerFte), note: `Середнє за ${summary.months} місяців`, delta: growth(currentPeriod.turnoverPerFte, priorPeriod?.turnoverPerFte ?? null) },
-    { label: "Середня кількість працівників", value: currentPeriod.avgFte === null ? "—" : wholeNumber.format(currentPeriod.avgFte), note: "Повних робочих ставок", delta: growth(currentPeriod.avgFte, priorPeriod?.avgFte ?? null) },
-  ] : [];
+
+  useEffect(() => {
+    if (!detail) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setDetail(null); };
+    document.documentElement.style.overflow = "hidden";
+    window.addEventListener("keydown", close);
+    return () => { document.documentElement.style.overflow = ""; window.removeEventListener("keydown", close); };
+  }, [detail]);
 
   return <div className={`owner-stack ${styles.financeApp}`}>
-    <section className={styles.toolbar} aria-label="Період фінансового огляду">
-      <div className={styles.toolbarTitle}><CalendarRange size={18} /><span><b>Фінанси</b><small>Дані по {monthLabel(latest?.period ?? null)} · оновлено {ukDate.format(new Date(dataset.source.modifiedAt))}</small></span></div>
-      <div className={styles.periodSwitch}>{quickOptions.map((option) => <button type="button" key={option.id} aria-pressed={rangeId === option.id} className={rangeId === option.id ? styles.activePeriod : ""} onClick={() => setRangeId(option.id)}>{option.id === "ytd" ? "Поточний рік" : "12 місяців"}</button>)}<label><select aria-label="Календарний період" value={quickOptions.some((option) => option.id === rangeId) ? "" : rangeId} onChange={(event) => event.target.value && setRangeId(event.target.value)}><option value="" disabled>Інший рік</option>{archiveOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select><ChevronDown size={14} /></label></div>
-    </section>
+    <section className={styles.stickyToolbar} aria-label="Режим фінансового огляду"><div><CalendarRange size={18} /><span><b>Фінанси</b><small>Дані по {monthLabel(latest.period)} · оновлено {ukDate.format(new Date(dataset.source.modifiedAt))}</small></span></div><div className={styles.modeSwitch}><button type="button" className={mode === "current" ? styles.activeMode : ""} aria-pressed={mode === "current"} onClick={() => setMode("current")}>Поточний рік</button><button type="button" className={mode === "compare" ? styles.activeMode : ""} aria-pressed={mode === "compare"} onClick={() => setMode("compare")}>Порівняння років</button></div></section>
 
-    <section className={styles.performanceCard} aria-labelledby="performance-title">
-      <header className={styles.performanceHeader}><div><h1 id="performance-title">{displayPeriodTitle(currentComparable?.from ?? null, currentComparable?.to ?? null)} {currentPeriod?.to?.slice(0, 4)}</h1><p>Показники та зміна до такого самого періоду минулого року</p></div><div className={styles.scopeNote}><b>{summary.months} місяців</b><span>Оборот без Coca-Cola та AB InBev</span></div></header>
-      <div className={styles.headlineGrid}>{headlineMetrics.map((metric) => <article key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><div><b className={deltaTone(metric.delta)}>{percent(metric.delta, true)}</b><small>до минулого року</small></div><p>{metric.note}</p></article>)}</div>
-      <div className={styles.historyBlock}>
-        <div className={styles.historyTitle}><div><h2>Порівняння за роками</h2></div><small>Під кожним значенням — зміна до попереднього року</small></div>
-        <div className={styles.performanceScroll}><table className={styles.performanceTable}><thead><tr><th>Період</th><th>Оборот групи<small>грн</small></th><th>На 1 працівника<small>останній місяць, грн</small></th><th>Середнє на 1 працівника<small>грн</small></th><th>Середня команда<small>FTE</small></th></tr></thead><tbody>{history.map((period, index) => { const previous = history[index - 1]; const metrics = [
-          { value: valueCell(period.baseTurnover), delta: previous ? growth(period.baseTurnover, previous.baseTurnover) : null },
-          { value: valueCell(period.lastTurnoverPerFte), delta: previous ? growth(period.lastTurnoverPerFte, previous.lastTurnoverPerFte) : null },
-          { value: valueCell(period.turnoverPerFte), delta: previous ? growth(period.turnoverPerFte, previous.turnoverPerFte) : null },
-          { value: period.avgFte === null ? "—" : wholeNumber.format(period.avgFte), delta: previous ? growth(period.avgFte, previous.avgFte) : null },
-        ]; return <tr key={period.id} className={index === history.length - 1 ? styles.currentYearRow : ""}><th><i style={{ background: entityColors[index] }} />{compactPeriodLabel(period.from, period.to)}{index === history.length - 1 ? <em>зараз</em> : null}</th>{metrics.map((metric, metricIndex) => <td key={metricIndex}><strong>{metric.value}</strong>{index ? <small className={deltaTone(metric.delta)}>{percent(metric.delta, true)}</small> : <small className={styles.muted}>база</small>}</td>)}</tr>; })}</tbody></table></div>
-      </div>
-    </section>
+    <section className={styles.summaryCard}><header><div><h1>{fullRangeLabel(current)}</h1><p>Усі показники порівнюються з таким самим періодом минулого року</p></div><span>{periodMonths} місяців<small>Без Coca-Cola та AB InBev</small></span></header><div className={styles.kpiGrid}>{kpis.map((kpi) => <button type="button" key={kpi.metric} className={kpi.metric === "turnover" ? styles.primaryKpi : ""} onClick={() => setDetail({ metric: kpi.metric, point: { id: `kpi:${kpi.metric}`, label: fullRangeLabel(current), value: kpi.value, months: kpi.metric === "productivity" ? [latest] : current.monthly } })}><span>{kpi.label}</span><strong>{formatterFor(kpi.metric)(kpi.value)}</strong><div><b className={kpi.delta === null ? styles.neutral : kpi.delta >= 0 ? styles.positive : styles.negative}>{percent(kpi.delta, true)}</b><small>до минулого року</small></div><p>{kpi.note}</p></button>)}</div></section>
 
-    {missingPayrollMonths.length ? <div className={styles.qualityNote}><CircleAlert size={17} /><span><b>Не всі витрати на ФОП внесені.</b> Немає даних за {missingPayrollMonths.map((month) => monthLabel(month.period)).join(", ")}.</span></div> : null}
+    <section className={styles.sectionHeading}><div><h2>{mode === "current" ? `Динаміка ${latestYear} року` : `Порівняння за ${periodMonths} місяців`}</h2><p>Наведіть на точку або колонку, щоб побачити значення. Натисніть, щоб відкрити розшифровку.</p></div><MousePointerClick size={20} /></section>
 
-    <section className={`role-panel ${styles.structurePanel}`}><header><div><span>КОМПАНІЇ</span><h2>Хто сформував оборот</h2><p>Наведіть на смугу, щоб побачити суму. Натисніть — щоб показати компанію помісячно.</p></div><b>{money(summary.baseTurnover)}</b></header><div className={styles.entityBars}>{model.entityMix.filter((item) => item.value > 0).map((item, index) => { const selectable = entityOptions.some((option) => option.id === item.id); const value = `${money(item.value)} · ${percent(item.share)}`; return <button type="button" key={item.id} disabled={!selectable} className={entity === item.id ? styles.activeEntity : ""} data-value={value} aria-label={`${item.label}: ${value}`} onClick={() => selectable && setEntity(item.id as EntityId)}><span className={styles.entityName}>{item.label}</span><span className={styles.entityTrack}><i style={{ width: `${Math.max(item.share * 100, 1.5)}%`, background: entityColors[index % entityColors.length] }} /></span></button>; })}</div></section>
+    <InteractiveMetricChart title="Оборот групи" description={mode === "current" ? "Оборот кожного місяця поточного року" : `Сума за однакові ${periodMonths} місяців кожного року`} points={pointSet("turnover")} variant="bar" format={money} onSelect={open("turnover")} />
+    <section className={styles.twoCharts}><InteractiveMetricChart title="Оборот на 1 працівника" description={mode === "current" ? "Значення за кожен місяць" : `Значення за ${monthNames[monthNumber(latest.period) - 1]} кожного року`} points={pointSet("productivity")} variant="line" format={money} onSelect={open("productivity")} /><InteractiveMetricChart title={`Середнє за ${periodMonths} місяців`} description="Середній місячний оборот на одного працівника" points={pointSet("averageProductivity")} variant="line" tone="green" format={money} onSelect={open("averageProductivity")} /></section>
+    <section className={styles.twoCharts}><InteractiveMetricChart title="Кількість працівників" description={mode === "current" ? "Повні робочі ставки за кожен місяць" : `Кількість у ${monthNames[monthNumber(latest.period) - 1]} кожного року`} points={pointSet("fte")} variant="bar" tone="orange" format={formatterFor("fte")} onSelect={open("fte")} /><InteractiveMetricChart title={`Середня кількість за ${periodMonths} місяців`} description="Середнє значення повних робочих ставок" points={pointSet("averageFte")} variant="line" tone="orange" format={formatterFor("averageFte")} onSelect={open("averageFte")} /></section>
 
-    <section className={`role-panel ${styles.monthlyPanel}`}><header><div><span>ПО МІСЯЦЯХ</span><h2>{selectedEntity.label}</h2><p>Темний стовпчик — обраний період, світлий — той самий місяць торік.</p></div><div className={styles.panelTotal}><b>{money(selectedTotal)}</b><small className={deltaTone(selectedGrowth)}>{percent(selectedGrowth, true)} до минулого року</small></div></header><div className={styles.chartKey}><span><i className={styles.currentKey} />{periodRangeLabel(currentComparable?.from ?? null, currentComparable?.to ?? null)}</span><span><i className={styles.priorKey} />{comparisonPeriod}</span>{entity !== "all" ? <button type="button" onClick={() => setEntity("all")}><X size={13} />Уся група</button> : null}</div><div className={styles.monthlyScroll}><MonthlyTurnoverChart key={`${model.range.id}:${entity}`} current={model.months} comparison={model.comparisonMonths} entity={entity} /></div></section>
+    <section className={styles.tablesSection}><article><header><h2>Показники за роками</h2><p>Однаковий період кожного року</p></header><div className={styles.tableWrap}><table><thead><tr><th>Період</th><th>Оборот групи</th><th>На 1 працівника<br /><small>останній місяць</small></th><th>На 1 працівника<br /><small>середнє</small></th><th>Середня кількість<br /><small>працівників</small></th></tr></thead><tbody>{periods.map((period) => <tr key={period.id}><th>{rangeLabel(period)}</th>{(["turnover", "productivity", "averageProductivity", "averageFte"] as FinanceMetric[]).map((metric) => <td key={metric}><button type="button" onClick={() => setDetail({ metric, point: comparisonPoints([period], metric)[0] })}>{formatterFor(metric)(valueForMetric(period, metric))}</button></td>)}</tr>)}</tbody></table></div></article><article><header><h2>Зміна до попереднього року</h2><p>Зелений — зростання, помаранчевий — зниження</p></header><div className={styles.tableWrap}><table><thead><tr><th>Період</th><th>Оборот</th><th>На 1 працівника<br /><small>останній місяць</small></th><th>На 1 працівника<br /><small>середнє</small></th><th>Кількість<br /><small>працівників</small></th></tr></thead><tbody>{periods.map((period, index) => { const prior = periods[index - 1]; return <tr key={period.id}><th>{rangeLabel(period)}</th>{(["turnover", "productivity", "averageProductivity", "averageFte"] as FinanceMetric[]).map((metric) => { const delta = prior ? growth(valueForMetric(period, metric), valueForMetric(prior, metric)) : null; return <td key={metric}><button type="button" className={delta === null ? styles.neutral : delta >= 0 ? styles.positive : styles.negative} onClick={() => setDetail({ metric, point: comparisonPoints([period], metric)[0] })}>{prior ? percent(delta, true) : "—"}</button></td>; })}</tr>; })}</tbody></table></div></article></section>
 
-    <section className={`role-panel ${styles.trajectoryPanel}`}><header><div><span>ЗА РОКАМИ</span><h2>Як зростав оборот</h2><p>Кожна лінія показує, як накопичувався оборот за однакові місяці року.</p></div><b className={deltaTone(model.growth.baseTurnover)}>{percent(model.growth.baseTurnover, true)} до минулого року</b></header><CumulativeTurnoverChart key={model.range.id} history={model.history} /></section>
-
-    <section className={`role-panel ${styles.workforcePanel}`}><header><div><span>КОМАНДА</span><h2>Оборот і витрати на одного працівника</h2><p>FTE — кількість повних робочих ставок. Наприклад, дві людини по пів ставки — це 1 FTE.</p></div></header><div className={styles.economicsMetrics}><div><span>Оборот на 1 працівника</span><strong>{money(summary.turnoverPerFte)}</strong></div><div><span>Витрати на ФОП на 1 працівника</span><strong>{money(summary.payrollPerFte)}</strong></div><div><span>Частка ФОП в обороті</span><strong>{percent(summary.payrollShare)}</strong></div><div><span>Різниця темпів ФОП і обороту</span><strong className={deltaTone(model.payrollEconomics?.payrollGrowthGap ?? null)}>{points(model.payrollEconomics?.payrollGrowthGap ?? null)}</strong></div></div><WorkforceEconomicsChart key={model.range.id} months={model.months} /></section>
-
-    <details className={styles.secondaryDetails}><summary><div><span>ОКРЕМО</span><h2>Coca-Cola та AB InBev</h2><p>Ці контракти не входять у головний оборот вище.</p></div><b>{money(summary.strategicTurnover)}</b><ChevronDown size={18} /></summary><div className={styles.secondaryBody}><div className={styles.reconciliationEquation}><span><small>Основний оборот</small><b>{money(summary.baseTurnover)}</b></span><i>+</i><span><small>Coca-Cola та AB InBev</small><b>{money(summary.strategicTurnover)}</b></span><i>=</i><span><small>Увесь оборот</small><b>{money(summary.grossTurnover)}</b></span></div><dl className={styles.splitList}>{strategicBreakdown.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{money(item.value)}</dd></div>)}<div className={styles.cashRow}><dt>Готівковий оборот в основному обороті<small>Рефкей {money(refkeyCash)} · Спецсервіс {money(specservisCash)}</small></dt><dd>{money(model.structure.recordedCash)}</dd></div></dl></div></details>
-
-    <details className={styles.auditDetails}><summary><div><span>ТОЧНІ ДАНІ</span><h2>Усі місяці таблицею</h2><p>Для перевірки конкретної цифри.</p></div><b>{model.months.length} місяців</b><ChevronDown size={19} /></summary><div className={styles.auditBody}><div className={styles.auditControls}><label><Filter size={16} /><select aria-label="Фільтр місячного аудиту" value={auditFilter} onChange={(event) => setAuditFilter(event.target.value as AuditFilter)}><option value="all">Усі місяці</option><option value="missing-payroll">Без даних ФОП</option><option value="payroll-above-turnover">ФОП більший за оборот</option><option value="decline">Падіння до минулого року</option></select><ChevronDown size={14} /></label><label><span>Сортувати:</span><select aria-label="Сортування місячного аудиту" value={auditSort} onChange={(event) => setAuditSort(event.target.value as AuditSort)}><option value="newest">Спочатку нові</option><option value="turnover-desc">Найбільший оборот</option><option value="growth-asc">Найбільше падіння</option><option value="productivity-desc">Найбільший оборот / працівника</option><option value="payroll-share-desc">Найбільша частка ФОП</option></select><ChevronDown size={14} /></label></div><div className={styles.tableWrap}><table><thead><tr><th>Місяць</th><th>Оборот</th><th>До минулого року</th><th>FTE</th><th>Оборот / працівника</th><th>ФОП</th><th>ФОП / оборот</th><th>Готівковий оборот</th><th>Coca-Cola / AB InBev</th></tr></thead><tbody>{auditedMonths.map((month) => { const yoy = growth(month.baseTurnover ?? 0, priorByCurrentPeriod.get(month.period)?.baseTurnover ?? null); const cash = (month.refkeyCash ?? 0) + (month.specservisCash ?? 0); return <tr key={month.period}><td><b>{monthLabel(month.period)}</b></td><td>{month.baseTurnover === null ? "—" : preciseMoney.format(month.baseTurnover)}</td><td className={deltaTone(yoy)}>{percent(yoy, true)}</td><td>{month.fte === null ? "—" : number.format(month.fte)}</td><td>{money(month.turnoverPerFte)}</td><td className={month.payroll === null ? styles.missing : ""}>{month.payroll === null ? "Немає даних" : preciseMoney.format(month.payroll)}</td><td>{percent(month.payrollShare)}</td><td>{preciseMoney.format(cash)}</td><td>{preciseMoney.format(month.strategicTurnover)}</td></tr>; })}</tbody></table>{!auditedMonths.length ? <div className={styles.emptyAudit}>За цим фільтром записів немає.</div> : null}</div></div></details>
-
-    <footer className={styles.footer}><span><LockKeyhole size={14} /> Лише executive.vault</span></footer>
+    {detail && typeof document !== "undefined" ? createPortal(<DetailModal detail={detail} onClose={() => setDetail(null)} />, document.body) : null}
   </div>;
 }
 
@@ -120,7 +148,7 @@ export function FinanceDashboard({ dataset: initialDataset }: { dataset?: Confid
   const [dataset, setDataset] = useState(initialDataset ?? null), [error, setError] = useState(""), [loading, setLoading] = useState(!initialDataset);
   const load = useCallback(async (signal?: AbortSignal) => { setLoading(true); try { const response = await fetch("/api/confidential/turnover", { cache: "no-store", signal }); if (response.status === 401) { window.location.assign("/login"); return; } if (!response.ok) throw new Error(response.status === 403 ? "Цей акаунт не має доступу до фінансів." : "Не вдалося завантажити фінансові дані."); setDataset(await response.json() as ConfidentialTurnoverDataset); setError(""); } catch (cause) { if (cause instanceof DOMException && cause.name === "AbortError") return; setError(cause instanceof Error ? cause.message : "Не вдалося завантажити фінансові дані."); } finally { if (!signal?.aborted) setLoading(false); } }, []);
   useEffect(() => { if (initialDataset) return; const controller = new AbortController(); fetch("/api/confidential/turnover", { cache: "no-store", signal: controller.signal }).then((response) => { if (response.status === 401) { window.location.assign("/login"); throw new Error("Unauthorized"); } if (!response.ok) throw new Error(response.status === 403 ? "Цей акаунт не має доступу до фінансів." : "Не вдалося завантажити фінансові дані."); return response.json() as Promise<ConfidentialTurnoverDataset>; }).then((payload) => { setDataset(payload); setError(""); }).catch((cause: unknown) => { if (cause instanceof DOMException && cause.name === "AbortError") return; if (cause instanceof Error && cause.message !== "Unauthorized") setError(cause.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); return () => controller.abort(); }, [initialDataset]);
-  if (!dataset) return <div className={styles.financeState}>{loading ? <LoaderCircle className="spin" size={27} /> : <CircleAlert size={27} />}<h2>{loading ? "Завантажуємо фінансовий огляд" : error}</h2>{!loading ? <button type="button" onClick={() => void load()}><RefreshCw size={16} />Спробувати ще раз</button> : null}</div>;
+  if (!dataset) return <div className={styles.financeState}>{loading ? <LoaderCircle className="spin" size={27} /> : <CircleAlert size={27} />}<h2>{loading ? "Завантажуємо фінансові дані" : error}</h2>{!loading ? <button type="button" onClick={() => void load()}><RefreshCw size={16} />Спробувати ще раз</button> : null}</div>;
   return <FinanceContent dataset={dataset} />;
 }
 
