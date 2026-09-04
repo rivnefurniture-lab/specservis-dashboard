@@ -2,15 +2,10 @@
 
 import { useState } from "react";
 import {
-  BarChart3,
-  CircleAlert,
-  History,
   Landmark,
   LayoutDashboard,
-  ListFilter,
   LogOut,
   Menu,
-  UsersRound,
   WalletCards,
   X,
 } from "lucide-react";
@@ -19,12 +14,7 @@ import type { ConfidentialTurnoverDataset } from "@/lib/confidential-turnover";
 import type { DashboardViewer } from "@/lib/dashboard-data";
 
 const financeNavigation = [
-  { id: "finance-overview", label: "Огляд", hint: "Основні показники", marker: "ОСНОВНІ ПОКАЗНИКИ", icon: LayoutDashboard },
-  { id: "finance-focus", label: "Контроль", hint: "Факти для перевірки", marker: "ФАКТИ ДЛЯ ПЕРЕВІРКИ", icon: CircleAlert },
-  { id: "finance-dynamics", label: "Динаміка", hint: "Зміни та джерела", marker: "ЗМІНА ДО ПОПЕРЕДНЬОГО РОКУ", icon: BarChart3 },
-  { id: "finance-team", label: "Команда", hint: "FTE, оборот і ФОП", marker: "ЕКОНОМІКА КОМАНДИ", icon: UsersRound },
-  { id: "finance-history", label: "Історія", hint: "Однакові періоди", marker: "ДИНАМІКА ЗА РОКАМИ", icon: History },
-  { id: "finance-audit", label: "Місячні дані", hint: "Фільтри й сортування", marker: "ДЕТАЛІ ТА ПЕРЕВІРКА", icon: ListFilter },
+  { id: "finance-overview", label: "Огляд", hint: "Оборот і працівники", icon: LayoutDashboard },
 ] as const;
 
 type FinanceSection = (typeof financeNavigation)[number]["id"];
@@ -37,10 +27,7 @@ export function FinanceWorkspace({ viewer, dataset }: { viewer: DashboardViewer;
   const navigate = (target: FinanceSection) => {
     setSection(target);
     setMobileMenu(false);
-    const marker = financeNavigation.find((item) => item.id === target)?.marker;
-    const element = [...document.querySelectorAll<HTMLElement>("main section")]
-      .find((item) => marker && item.textContent?.includes(marker));
-    element?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return <div className="owner-app">

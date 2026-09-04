@@ -4,16 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
-  BarChart3,
   BriefcaseBusiness,
   ChevronDown,
   ClipboardCheck,
   CircleAlert,
-  History,
   LayoutDashboard,
   Landmark,
   LoaderCircle,
-  ListFilter,
   LogOut,
   Menu,
   Network,
@@ -68,12 +65,7 @@ const navigation = [
 ];
 
 const financeNavigation = [
-  { id: "finance-overview", label: "Огляд", hint: "Фінансовий пульс", marker: "ОПЕРАЦІЙНИЙ ОБОРОТ ГРУПИ", icon: LayoutDashboard },
-  { id: "finance-focus", label: "Фокус власника", hint: "Ризики й дії", marker: "РІШЕННЯ ДЛЯ ВЛАСНИКА", icon: CircleAlert },
-  { id: "finance-dynamics", label: "Динаміка", hint: "Зміни та джерела", marker: "ЩО ДАЛО ЗМІНУ", icon: BarChart3 },
-  { id: "finance-team", label: "Команда", hint: "FTE та продуктивність", marker: "ЕКОНОМІКА КОМАНДИ", icon: UsersRound },
-  { id: "finance-history", label: "Історія", hint: "Рік до року", marker: "ЧИ ВИКОНУЄМО ТЕМП", icon: History },
-  { id: "finance-audit", label: "Місячний аудит", hint: "Фільтри й аномалії", marker: "ДЕТАЛІ ТА ПЕРЕВІРКА", icon: ListFilter },
+  { id: "finance-overview", label: "Огляд", hint: "Оборот і працівники", icon: LayoutDashboard },
 ] as const;
 
 function isViewAllowed(role: DashboardRole | undefined, view: View, workspaceAccess?: "manager" | "employee" | null) {
@@ -445,10 +437,7 @@ export function OwnerDashboard() {
   const navigateFinance = (target: (typeof financeNavigation)[number]["id"]) => {
     setFinanceSection(target);
     setMobileMenu(false);
-    const marker = financeNavigation.find((item) => item.id === target)?.marker;
-    const section = [...document.querySelectorAll<HTMLElement>("main section")]
-      .find((item) => marker && item.textContent?.includes(marker));
-    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const openWork = (target: RoleWorkTarget) => {
