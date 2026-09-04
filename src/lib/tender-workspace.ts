@@ -3,6 +3,10 @@ export type TenderParticipationDecision = "undecided" | "participate" | "skip" |
 export type TenderWorkflowStatus = "new" | "review" | "preparing" | "submitted" | "qualification" | "won" | "lost" | "contract" | "closed";
 export type TenderWorkPriority = "low" | "normal" | "high" | "critical";
 
+export function validDecisionReason(decision: TenderParticipationDecision, reason: string | null | undefined) {
+  return decision !== "skip" || Boolean(reason?.trim());
+}
+
 export type TenderWorkspaceMember = {
   id: string;
   label: string;

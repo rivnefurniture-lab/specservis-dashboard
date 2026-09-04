@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { findAccountById, tenderWorkspaceMembers, toViewer } from "@/lib/accounts";
+import { validDecisionReason } from "@/lib/tender-workspace";
 
 const owner = findAccountById("owner");
 const executive = findAccountById("executive-vault");
@@ -17,5 +18,9 @@ assert.equal(toViewer(climateEmployee).tenderWorkspaceAccess, "employee");
 const members = tenderWorkspaceMembers("Кондиціонування");
 assert.deepEqual(members.map((member) => member.id), ["climate-manager", "climate-1", "climate-2", "climate-3"]);
 assert(members.every((member) => !member.id.includes("owner")));
+assert.equal(validDecisionReason("skip", ""), false);
+assert.equal(validDecisionReason("skip", "  "), false);
+assert.equal(validDecisionReason("skip", "Не підходить ціна"), true);
+assert.equal(validDecisionReason("participate", ""), true);
 
 console.log("tender workspace: strict direction RBAC and team membership passed");

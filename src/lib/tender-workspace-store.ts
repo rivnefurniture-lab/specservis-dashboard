@@ -16,6 +16,7 @@ import type {
   TenderWorkspacePayload,
   TenderWorkbookFields,
 } from "@/lib/tender-workspace";
+import { validDecisionReason } from "@/lib/tender-workspace";
 
 const ENABLED_DIRECTIONS = ["Кондиціонування"] as const;
 const SYSTEM_ACTOR = "system:analytics-sync";
@@ -363,6 +364,7 @@ export async function loadTenderWorkspace(account: DashboardAccount): Promise<Te
       order by c.signed_at desc nulls last, c.source_modified_at desc nulls last limit 1
     ) latest_contract on true
     where w.direction = 'Кондиціонування'
+      and w.participation_decision <> 'skip'
       and (
         (p.submission_end_at > now()
           and p.status in ('active.enquiries', 'active.tendering')
@@ -451,6 +453,7 @@ export async function updateTenderWorkItem(account: DashboardAccount, patch: Ten
     managerNote: patch.managerNote === undefined ? current.manager_note : cleanText(patch.managerNote, 12_000),
     nextActionAt,
   };
+  if (!validDecisionReason(next.participationDecision, next.decisionReason)) return { kind: "invalid" as const };
   const previous = patchState(current);
   const changedFields = Object.keys(next).filter((key) => next[key as keyof typeof next] !== previous[key as keyof typeof previous]);
   if (!changedFields.length) return { kind: "updated" as const, version: current.version };
