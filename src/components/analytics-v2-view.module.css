@@ -135,8 +135,8 @@
 .presetChip button:last-child { padding-inline: 7px; color: var(--owner-muted, #6d7183); border-left: 1px solid var(--owner-line, rgba(31,34,65,.1)); }
 .presetChip button:last-child:hover { color: var(--owner-red, #e11732); background: #fff0f2; }
 .presetName input { height: 34px; }
-.savePreset { height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 9px; color: white; background: var(--owner-blue, #25216f); font-size: 9px; font-weight: 760; cursor: pointer; }
-.savePreset:disabled { opacity: .42; cursor: default; }
+.analytics .savePreset { height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 9px; color: white; background: var(--owner-blue, #25216f); font-size: 9px; font-weight: 760; cursor: pointer; }
+.analytics .savePreset:disabled { color: #6d7183; background: #e7e8ef; opacity: 1; cursor: default; }
 
 .errorBanner,
 .warning { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 14px; font-size: 10px; }

@@ -344,17 +344,6 @@ function formatDate(value: string | null) {
   }).format(timestamp);
 }
 
-function humanizeWarning(value: string) {
-  if (/backfill|durable queue/i.test(value)) {
-    const queued = value.match(/\b\d[\d\s.,]*\b/)?.[0]?.trim();
-    return `Ще завантажується історія${queued ? `: залишилося ${queued} закупівель` : ""}. До завершення показники можуть змінитися.`;
-  }
-  if (/серверними лімітами|агрегати KPI/i.test(value)) {
-    return "Підсумки враховують усі дані. У детальних таблицях показано частину рядків.";
-  }
-  return value;
-}
-
 function queryOf(filters: FilterState) {
   const params = new URLSearchParams();
   const today = new Date();
@@ -401,6 +390,16 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
   const { result, meta } = payload;
   const provenance = meta.source || meta.storage || null;
   const confidence: AnalyticsConfidence = meta.complete ? "high" : "medium";
+  const queued = meta.sync?.queued ?? 0;
+  const lastSyncAt = meta.sync?.lastSuccessAt ? Date.parse(meta.sync.lastSuccessAt) : NaN;
+  const queueIsStalled = queued > 0 && (
+    meta.sync?.degraded === true
+    || !Number.isFinite(lastSyncAt)
+    || Date.now() - lastSyncAt > 12 * 60 * 60 * 1000
+  );
+  const queueWarning = queued > 0
+    ? `${queueIsStalled ? "Оновлення історії зупинилося" : "Історичні дані ще неповні"}: не оброблено ${integerFormatter.format(queued)} закупівель.`
+    : null;
   const kpis: AnalyticsKpi[] = [
     { id: "tenders", label: "Закупівель", value: result.summary.tenders, format: "integer", note: "У часовій лінзі", source: provenance, confidence },
     { id: "participations", label: "Участей", value: result.summary.participations, format: "integer", note: "Остання ставка постачальника на лот", source: provenance, confidence },
@@ -541,10 +540,8 @@ function normalizeResponse(payload: AnalyticsV2Response): AnalyticsV2ViewData {
       note: meta.complete === false ? "Неповне джерело: відсутні частина подій або полів." : null,
     }],
     warnings: [...new Set([
-      ...(meta.limitations ?? []).map(humanizeWarning),
-      ...(payload.truncated && (payload.truncated.suppliers || payload.truncated.matrix || payload.truncated.drilldown)
-        ? ["Підсумки враховують усі дані. У детальних таблицях показано частину рядків."]
-        : []),
+      ...(queueWarning ? [queueWarning] : []),
+      ...(meta.limitations ?? []).filter((value) => !/backfill|durable queue|завантажується історія|серверними лімітами|агрегати KPI|відповідь обрізана/i.test(value)),
     ])],
     facets: {
       department: TENDER_DIRECTION_GROUPS.map((group) => ({ value: group.id, label: group.label })),
