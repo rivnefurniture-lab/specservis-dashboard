@@ -3,7 +3,7 @@
 .financeState h2 { margin:0; color:var(--owner-blue); font-size:18px; }
 .financeState button { display:flex; align-items:center; gap:8px; padding:11px 15px; border:0; border-radius:11px; color:#fff; background:var(--owner-blue); cursor:pointer; }
 
-.stickyToolbar { min-height:64px; position:sticky; z-index:30; top:10px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:10px 12px 10px 16px; border:1px solid rgba(255,255,255,.9); border-radius:17px; background:rgba(255,255,255,.92); box-shadow:0 12px 32px rgba(31,32,67,.1); backdrop-filter:blur(18px); }
+.stickyToolbar { min-height:64px; position:sticky; z-index:54; top:98px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:10px 12px 10px 16px; border:1px solid rgba(255,255,255,.9); border-radius:17px; background:rgba(255,255,255,.94); box-shadow:0 12px 32px rgba(31,32,67,.12); backdrop-filter:blur(18px); }
 .stickyToolbar > div:first-child { min-width:0; display:flex; align-items:center; gap:10px; color:var(--finance-blue); }
 .stickyToolbar > div:first-child > span { min-width:0; display:grid; gap:3px; }
 .stickyToolbar b { color:var(--owner-ink); font-size:14px; }
@@ -126,9 +126,12 @@
   .kpiGrid > button { min-height:205px; }
   .twoCharts { grid-template-columns:1fr; }
 }
+@media (max-width:900px) {
+  .stickyToolbar { top:88px; }
+}
 @media (max-width:720px) {
   .financeApp { gap:12px; }
-  .stickyToolbar { top:6px; align-items:stretch; flex-direction:column; gap:8px; }
+  .stickyToolbar { top:84px; align-items:stretch; flex-direction:column; gap:8px; }
   .stickyToolbar > div:first-child { display:none; }
   .toolbarActions { width:100%; }
   .modeSwitch { width:100%; }
