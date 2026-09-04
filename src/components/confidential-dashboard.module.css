@@ -1,4 +1,4 @@
-.financeApp { --finance-blue:#2f2a80; --finance-green:#219967; --finance-orange:#d77b37; display:grid; gap:18px; scroll-behavior:smooth; }
+.financeApp { --finance-blue:#2f2a80; --finance-green:#219967; --finance-orange:#d77b37; --finance-red:#df1838; display:grid; gap:18px; scroll-behavior:smooth; }
 .financeState { min-height:460px; display:grid; place-content:center; justify-items:center; gap:13px; color:var(--owner-muted); }
 .financeState h2 { margin:0; color:var(--owner-blue); font-size:18px; }
 .financeState button { display:flex; align-items:center; gap:8px; padding:11px 15px; border:0; border-radius:11px; color:#fff; background:var(--owner-blue); cursor:pointer; }
@@ -55,6 +55,7 @@
 .blueChart { --chart-color:var(--finance-blue); }
 .greenChart { --chart-color:var(--finance-green); }
 .orangeChart { --chart-color:var(--finance-orange); }
+.redChart { --chart-color:var(--finance-red); }
 .chartTooltip { width:200px; position:absolute; z-index:5; top:14px; display:grid; gap:4px; padding:10px 12px; border-radius:11px; color:#fff; background:rgba(25,23,67,.96); box-shadow:0 13px 28px rgba(24,22,66,.22); transform:translateX(-50%); pointer-events:none; }
 .chartTooltip span { color:rgba(255,255,255,.7); font-size:10px; }
 .chartTooltip strong { font-size:15px; }

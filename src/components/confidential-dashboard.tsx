@@ -31,6 +31,7 @@ function rangeLabel(period: ComparableTurnover) { return `${monthShort[monthNumb
 function fullRangeLabel(period: ComparableTurnover) { return `${titleCase(monthNames[monthNumber(period.from) - 1])}–${monthNames[monthNumber(period.to) - 1]} ${period.to.slice(0, 4)}`; }
 function valueForMetric(period: ComparableTurnover, metric: FinanceMetric) {
   if (metric === "turnover") return period.baseTurnover;
+  if (metric === "cocaCola") return sum(period.monthly.map((month) => month.cocaColaTurnover));
   if (metric === "productivity") return period.lastTurnoverPerFte;
   if (metric === "averageProductivity") return period.turnoverPerFte;
   if (metric === "fte") return period.lastFte;
@@ -46,6 +47,7 @@ function currentPoints(months: TurnoverMonth[], metric: FinanceMetric): FinanceC
   return months.map((month, index) => {
     const prefix = months.slice(0, index + 1);
     const value = metric === "turnover" ? month.baseTurnover
+      : metric === "cocaCola" ? month.cocaColaTurnover
       : metric === "productivity" ? month.turnoverPerFte
         : metric === "averageProductivity" ? average(prefix.map((item) => item.turnoverPerFte))
           : metric === "fte" ? month.fte : average(prefix.map((item) => item.fte));
@@ -73,8 +75,18 @@ function companySlices(months: TurnoverMonth[], metric: "turnover" | "productivi
   return values.map((item) => ({ ...item, share: total ? item.value / total : 0 })).sort((left, right) => right.value - left.value);
 }
 
+function cocaColaSlices(months: TurnoverMonth[]): CompanySlice[] {
+  const values = [
+    { id: "coca-specservis", label: "Спецсервіс", value: sum(months.map((month) => month.cocaColaSpecservis)) },
+    { id: "coca-promtech", label: "Промтехгруп", value: sum(months.map((month) => month.cocaColaPromtech)) },
+  ].filter((item) => item.value > 0);
+  const total = sum(values.map((item) => item.value));
+  return values.map((item) => ({ ...item, share: total ? item.value / total : 0 })).sort((left, right) => right.value - left.value);
+}
+
 function metricTitle(metric: FinanceMetric) {
   if (metric === "turnover") return "З чого складається оборот";
+  if (metric === "cocaCola") return "З чого складається оборот Coca-Cola";
   if (metric === "productivity") return "Як розраховано оборот на працівника";
   if (metric === "averageProductivity") return "Як розраховано середній оборот на працівника";
   if (metric === "fte") return "Кількість повних робочих ставок";
@@ -83,6 +95,7 @@ function metricTitle(metric: FinanceMetric) {
 
 function metricExplanation(metric: FinanceMetric, months: TurnoverMonth[]) {
   if (metric === "turnover") return `Сума обороту компаній за ${months.length === 1 ? monthLabel(months[0].period) : `${months.length} місяців`}.`;
+  if (metric === "cocaCola") return `Сума обороту Coca-Cola за ${months.length === 1 ? monthLabel(months[0].period) : `${months.length} місяців`}.`;
   if (metric === "productivity") return "Оборот місяця поділено на кількість повних робочих ставок цього місяця.";
   if (metric === "averageProductivity") return `Середнє з ${months.length} місячних значень обороту на одного працівника.`;
   if (metric === "fte") return "Пряме значення кількості повних робочих ставок із вихідного файлу.";
@@ -91,13 +104,17 @@ function metricExplanation(metric: FinanceMetric, months: TurnoverMonth[]) {
 
 function DetailModal({ detail, onClose }: { detail: Detail; onClose: () => void }) {
   const { metric, point } = detail;
-  const isMoney = metric === "turnover" || metric === "productivity" || metric === "averageProductivity";
+  const isMoney = metric === "turnover" || metric === "productivity" || metric === "averageProductivity" || metric === "cocaCola";
   const formatter = formatterFor(metric);
-  const slices = isMoney ? companySlices(point.months, metric) : [];
+  const slices = metric === "cocaCola" ? cocaColaSlices(point.months) : metric === "turnover" || metric === "productivity" || metric === "averageProductivity" ? companySlices(point.months, metric) : [];
   const sourceRows = point.months.map((month) => ({ id: month.period, label: monthLabel(month.period), value: metric === "averageProductivity" ? month.turnoverPerFte : month.fte }));
   const sourceFormatter = metric === "fte" || metric === "averageFte" ? (value: number | null) => value === null ? "—" : oneDecimal.format(value) : formatter;
   const lastMonth = point.months.at(-1) ?? null;
-  return <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={styles.detailModal} role="dialog" aria-modal="true" aria-labelledby="detail-title"><header><div><span>{point.label}</span><h2 id="detail-title">{metricTitle(metric)}</h2><p>{metricExplanation(metric, point.months)}</p></div><button type="button" onClick={onClose} aria-label="Закрити"><X size={20} /></button></header><div className={styles.detailValue}><span>Показник</span><strong>{formatter(point.value)}</strong></div>{isMoney ? <CompanyPieChart items={slices} total={sum(slices.map((item) => item.value))} format={formatter} /> : <SourceBars rows={sourceRows} format={sourceFormatter} selectedId={point.months.length === 1 ? point.months[0].period : undefined} />}{metric === "productivity" && lastMonth ? <div className={styles.formula}><span>{money(lastMonth.baseTurnover)}</span><i>÷</i><span>{oneDecimal.format(lastMonth.fte ?? 0)} працівника</span><i>=</i><b>{money(lastMonth.turnoverPerFte)}</b></div> : null}<footer>{isMoney ? "Coca-Cola та AB InBev не включені в оборот і його розподіл." : "FTE — кількість повних робочих ставок. Дві людини по пів ставки дорівнюють 1 FTE."}</footer></section></div>;
+  const footer = metric === "cocaCola"
+    ? "Оборот Coca-Cola показано окремо й не включено до чотирьох основних показників. AB InBev тут не враховується."
+    : isMoney ? "Coca-Cola та AB InBev не включені в оборот і його розподіл."
+      : "FTE — кількість повних робочих ставок. Дві людини по пів ставки дорівнюють 1 FTE.";
+  return <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={styles.detailModal} role="dialog" aria-modal="true" aria-labelledby="detail-title"><header><div><span>{point.label}</span><h2 id="detail-title">{metricTitle(metric)}</h2><p>{metricExplanation(metric, point.months)}</p></div><button type="button" onClick={onClose} aria-label="Закрити"><X size={20} /></button></header><div className={styles.detailValue}><span>Показник</span><strong>{formatter(point.value)}</strong></div>{isMoney ? <CompanyPieChart items={slices} total={sum(slices.map((item) => item.value))} format={formatter} /> : <SourceBars rows={sourceRows} format={sourceFormatter} selectedId={point.months.length === 1 ? point.months[0].period : undefined} />}{metric === "productivity" && lastMonth ? <div className={styles.formula}><span>{money(lastMonth.baseTurnover)}</span><i>÷</i><span>{oneDecimal.format(lastMonth.fte ?? 0)} працівника</span><i>=</i><b>{money(lastMonth.turnoverPerFte)}</b></div> : null}<footer>{footer}</footer></section></div>;
 }
 
 function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
@@ -139,6 +156,8 @@ function FinanceContent({ dataset }: { dataset: ConfidentialTurnoverDataset }) {
     <section className={styles.twoCharts}><InteractiveMetricChart title="Кількість працівників" description={mode === "current" ? "Повні робочі ставки за кожен місяць" : `Кількість у ${monthNames[monthNumber(latest.period) - 1]} кожного року`} points={pointSet("fte")} variant="bar" tone="orange" format={formatterFor("fte")} onSelect={open("fte")} /><InteractiveMetricChart title={`Середня кількість за ${periodMonths} місяців`} description="Середнє значення повних робочих ставок" points={pointSet("averageFte")} variant="line" tone="orange" format={formatterFor("averageFte")} onSelect={open("averageFte")} /></section>
 
     <section className={styles.tablesSection}><article><header><h2>Показники за роками</h2><p>Однаковий період кожного року</p></header><div className={styles.tableWrap}><table><thead><tr><th>Період</th><th>Оборот групи</th><th>На 1 працівника<br /><small>останній місяць</small></th><th>На 1 працівника<br /><small>середнє</small></th><th>Середня кількість<br /><small>працівників</small></th></tr></thead><tbody>{periods.map((period) => <tr key={period.id}><th>{rangeLabel(period)}</th>{(["turnover", "productivity", "averageProductivity", "averageFte"] as FinanceMetric[]).map((metric) => <td key={metric}><button type="button" onClick={() => setDetail({ metric, point: comparisonPoints([period], metric)[0] })}>{formatterFor(metric)(valueForMetric(period, metric))}</button></td>)}</tr>)}</tbody></table></div></article><article><header><h2>Зміна до попереднього року</h2><p>Зелений — зростання, помаранчевий — зниження</p></header><div className={styles.tableWrap}><table><thead><tr><th>Період</th><th>Оборот</th><th>На 1 працівника<br /><small>останній місяць</small></th><th>На 1 працівника<br /><small>середнє</small></th><th>Кількість<br /><small>працівників</small></th></tr></thead><tbody>{periods.map((period, index) => { const prior = periods[index - 1]; return <tr key={period.id}><th>{rangeLabel(period)}</th>{(["turnover", "productivity", "averageProductivity", "averageFte"] as FinanceMetric[]).map((metric) => { const delta = prior ? growth(valueForMetric(period, metric), valueForMetric(prior, metric)) : null; return <td key={metric}><button type="button" className={delta === null ? styles.neutral : delta >= 0 ? styles.positive : styles.negative} onClick={() => setDetail({ metric, point: comparisonPoints([period], metric)[0] })}>{prior ? percent(delta, true) : "—"}</button></td>; })}</tr>; })}</tbody></table></div></article></section>
+
+    <InteractiveMetricChart title="Оборот Coca-Cola" description={mode === "current" ? "Окремий оборот за кожен місяць; не входить до основних показників" : `Окремий оборот за однакові ${periodMonths} місяців кожного року`} points={pointSet("cocaCola")} variant="bar" tone="red" format={money} onSelect={open("cocaCola")} />
 
     {detail && typeof document !== "undefined" ? createPortal(<DetailModal detail={detail} onClose={() => setDetail(null)} />, document.body) : null}
   </div>;

@@ -5,7 +5,7 @@ import type { TurnoverMonth } from "@/lib/confidential-dashboard";
 import styles from "./confidential-dashboard.module.css";
 
 export type EntityId = "specservis" | "promtech" | "refkey" | "naryshkov" | "pashkov" | "danilenko";
-export type FinanceMetric = "turnover" | "productivity" | "averageProductivity" | "fte" | "averageFte";
+export type FinanceMetric = "turnover" | "productivity" | "averageProductivity" | "fte" | "averageFte" | "cocaCola";
 export type FinanceChartPoint = { id: string; label: string; value: number | null; months: TurnoverMonth[] };
 export type CompanySlice = { id: string; label: string; value: number; share: number };
 
@@ -54,7 +54,7 @@ export function InteractiveMetricChart({ title, description, points, variant, fo
   points: FinanceChartPoint[];
   variant: "bar" | "line";
   format: (value: number | null) => string;
-  tone?: "blue" | "green" | "orange";
+  tone?: "blue" | "green" | "orange" | "red";
   onSelect: (point: FinanceChartPoint) => void;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
@@ -65,7 +65,7 @@ export function InteractiveMetricChart({ title, description, points, variant, fo
   const y = (value: number) => bottom - value / maximum * (bottom - top);
   const barWidth = Math.min(58, span * .52);
   const active = hovered === null ? null : points[hovered] ?? null;
-  const toneClass = tone === "green" ? styles.greenChart : tone === "orange" ? styles.orangeChart : styles.blueChart;
+  const toneClass = tone === "green" ? styles.greenChart : tone === "orange" ? styles.orangeChart : tone === "red" ? styles.redChart : styles.blueChart;
   return <article className={styles.chartCard}>
     <header><h2>{title}</h2><p>{description}</p></header>
     <div className={`${styles.chartCanvas} ${toneClass}`} onMouseLeave={() => setHovered(null)}>

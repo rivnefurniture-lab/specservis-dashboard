@@ -16,6 +16,8 @@ const records = [
 ];
 
 const derived = deriveTurnoverMonth(records[3]);
+assert.equal(derived.cocaColaTurnover, 25);
+assert.equal(derived.abinbevTurnover, 0);
 assert.equal(derived.strategicTurnover, 25);
 assert.equal(derived.grossTurnover, 225);
 assert.equal(derived.turnoverPerFte, 40, "director productivity follows base turnover / FTE, as in the source workbook");

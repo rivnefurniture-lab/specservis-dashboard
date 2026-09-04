@@ -5,6 +5,8 @@ export type TurnoverRangeOption = { id: string; label: string; from: string; to:
 export type TurnoverMonth = ConfidentialTurnoverRecord & {
   grossTurnover: number;
   strategicTurnover: number;
+  cocaColaTurnover: number;
+  abinbevTurnover: number;
   turnoverPerFte: number | null;
   payrollPerFte: number | null;
   payrollShare: number | null;
@@ -118,12 +120,16 @@ function growth(current: number | null, previous: number | null) {
 }
 
 export function deriveTurnoverMonth(record: ConfidentialTurnoverRecord): TurnoverMonth {
-  const strategicTurnover = sum([record.cocaColaPromtech, record.cocaColaSpecservis, record.abinbev]);
+  const cocaColaTurnover = sum([record.cocaColaPromtech, record.cocaColaSpecservis]);
+  const abinbevTurnover = record.abinbev ?? 0;
+  const strategicTurnover = cocaColaTurnover + abinbevTurnover;
   const grossTurnover = (record.baseTurnover ?? 0) + strategicTurnover;
   return {
     ...record,
     grossTurnover,
     strategicTurnover,
+    cocaColaTurnover,
+    abinbevTurnover,
     turnoverPerFte: record.fte && record.baseTurnover !== null ? record.baseTurnover / record.fte : null,
     payrollPerFte: record.payroll !== null && record.fte ? record.payroll / record.fte : null,
     payrollShare: record.payroll !== null && record.baseTurnover ? record.payroll / record.baseTurnover : null,
