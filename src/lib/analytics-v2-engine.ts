@@ -690,7 +690,11 @@ export function buildAnalyticsV2(input: AnalyticsV2Input | ProzorroAnalyticsData
   const allLotTenderIds = new Set(input.lots.map((lot) => lot.tenderId));
   const baseTenderIds = new Set(baseLots.map((lot) => lot.tenderId));
   for (const tender of baseTenders) {
-    if (!allLotTenderIds.has(tender.id) && (contractsByTender.get(tender.id)?.length ?? 0) > 0) baseTenderIds.add(tender.id);
+    if (!allLotTenderIds.has(tender.id)
+      && (contractsByTender.get(tender.id)?.length ?? 0) > 0
+      && amountInRange(tender.expectedAmount, filters.expectedAmountMin, filters.expectedAmountMax)) {
+      baseTenderIds.add(tender.id);
+    }
   }
   const baseLotIds = new Set(baseLots.map((lot) => lot.id));
   const currencyAllowed = (currency: string) => selected(normalizeCurrency(currency), filters.currencies?.map(normalizeCurrency));

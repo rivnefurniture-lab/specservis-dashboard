@@ -129,6 +129,10 @@ assert.equal(advanced.drilldown[0].bidId, "BID-1-new");
 assert.equal(advanced.drilldown[0].awardId, "A1-copy");
 assert.equal(advanced.drilldown[0].contracts[0].id, "C1");
 
+const expectedAmountMinimum = buildAnalyticsV2(dataset, { expectedAmountMin: 90 });
+assert.equal(expectedAmountMinimum.summary.tenders, 1, "expected amount minimum must exclude direct contracts without a known qualifying tender value");
+assert.ok(expectedAmountMinimum.drilldown.every((row) => row.tenderId === "T1"));
+
 const commercialFilters = buildAnalyticsV2(dataset, {
   lowestBidSupplierIds: ["Supplier Two"],
   lowestBidAmountMin: 80,
