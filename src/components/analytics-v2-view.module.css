@@ -77,7 +77,14 @@
   box-shadow: 0 14px 38px rgba(31,32,67,.075), inset 0 1px white;
   backdrop-filter: blur(16px);
 }
-.filterTop { display: grid; grid-template-columns: auto minmax(165px,.65fr) auto minmax(135px,.45fr) auto auto auto; align-items: end; gap: 9px; }
+.filterTop { display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); align-items: end; gap: 9px; }
+.audienceField { grid-column: 1/4; }
+.directionField { grid-column: 4/7; }
+.dateField { grid-column: 7/10; }
+.periodField { grid-column: 10/13; }
+.filterToggle { grid-column: 7/10; grid-row: 2; }
+.exportButton { grid-column: 10/11; grid-row: 2; }
+.applyButton { grid-column: 11/13; grid-row: 2; }
 .toggleField { min-width: 0; display: grid; gap: 7px; }
 .controlLabel { color: var(--owner-muted, #6d7183); font-size: 8px; font-weight: 780; letter-spacing: .045em; }
 .segmented,
