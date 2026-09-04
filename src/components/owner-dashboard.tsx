@@ -32,6 +32,7 @@ import {
   type RoleWorkTarget,
 } from "@/components/role-modules";
 import { TenderDrawer, type TenderSelection } from "@/components/tender-drawer";
+import type { FinanceLocale } from "@/components/confidential-dashboard";
 import type { DashboardPayload } from "@/lib/dashboard-data";
 import { date, dateTime, integer, money } from "@/lib/dashboard-data";
 import type { Direction, InternalTender, MarketCoveragePoint, MarketCoverageSummary } from "@/lib/types";
@@ -65,7 +66,7 @@ const navigation = [
 ];
 
 const financeNavigation = [
-  { id: "finance-overview", label: "Огляд", hint: "Оборот і працівники", icon: LayoutDashboard },
+  { id: "finance-overview", icon: LayoutDashboard },
 ] as const;
 
 function isViewAllowed(role: DashboardRole | undefined, view: View, workspaceAccess?: "manager" | "employee" | null) {
@@ -229,6 +230,7 @@ export function OwnerDashboard() {
   const [view, setView] = useState<View>("overview");
   const [workspace, setWorkspace] = useState<Workspace>("tenders");
   const [financeSection, setFinanceSection] = useState<(typeof financeNavigation)[number]["id"]>("finance-overview");
+  const [financeLocale, setFinanceLocale] = useState<FinanceLocale>("uk");
   const [directionScope, setDirectionScope] = useState<DirectionScope>("all");
   const [period, setPeriod] = useState<Period>("week");
   // Кожна сторінка тримає свій період: вони фільтрують різні речі.
@@ -451,24 +453,25 @@ export function OwnerDashboard() {
     : navigation;
   const roleNavigation = availableNavigation.filter((item) => item.id !== "tender-workspace" || Boolean(viewer.tenderWorkspaceAccess));
   const activeView = isViewAllowed(role, view, viewer.tenderWorkspaceAccess) ? view : "overview";
+  const financeRu = financeLocale === "ru";
   const currentPage = workspace === "finance"
-    ? { id: "finance", label: "Фінанси", hint: "Оборот і команда", icon: WalletCards }
+    ? { id: "finance", label: financeRu ? "Финансы" : "Фінанси", hint: financeRu ? "Оборот и команда" : "Оборот і команда", icon: WalletCards }
     : roleNavigation.find((item) => item.id === activeView) ?? roleNavigation[0];
 
   return (
     <div className="owner-app">
       <aside className={mobileMenu ? "owner-sidebar open" : "owner-sidebar"}>
-        <button type="button" className="owner-brand" onClick={() => navigate("overview")} aria-label="Спецсервіс — головна">
+        <button type="button" className="owner-brand" onClick={() => navigate("overview")} aria-label={workspace === "finance" && financeRu ? "Спецсервис — главная" : "Спецсервіс — головна"}>
           <span className="owner-brand-logo" />
         </button>
         <div className="owner-account">
           <span>{viewer.label.slice(0, 1)}</span>
           <div><b>{viewer.label}</b><small>{roleLabels[role]}</small></div>
         </div>
-        <nav aria-label={workspace === "finance" ? "Фінансове меню" : "Головне меню"}>
+        <nav aria-label={workspace === "finance" ? (financeRu ? "Финансовое меню" : "Фінансове меню") : "Головне меню"}>
           {workspace === "finance" ? financeNavigation.map((item) => {
             const Icon = item.icon;
-            return <button type="button" key={item.id} className={financeSection === item.id ? "active" : ""} onClick={() => navigateFinance(item.id)}><Icon size={18} /><span><b>{item.label}</b><small>{item.hint}</small></span></button>;
+            return <button type="button" key={item.id} className={financeSection === item.id ? "active" : ""} onClick={() => navigateFinance(item.id)}><Icon size={18} /><span><b>{financeRu ? "Обзор" : "Огляд"}</b><small>{financeRu ? "Оборот и сотрудники" : "Оборот і працівники"}</small></span></button>;
           }) : roleNavigation.map((item) => {
             const Icon = item.icon;
             const count = item.id === "work" ? activeTenders.length : item.id === "market" ? monitoringTotal ?? marketNeedReview.length : null;
@@ -477,23 +480,23 @@ export function OwnerDashboard() {
         </nav>
         <div className="owner-sidebar-bottom">
           {workspace === "finance"
-            ? <div className="owner-side-sync"><i /><span><b>Фінансові дані</b><small>активний набір · без кешу</small></span></div>
+            ? <div className="owner-side-sync"><i /><span><b>{financeRu ? "Финансовые данные" : "Фінансові дані"}</b><small>{financeRu ? "активный набор · без кеша" : "активний набір · без кешу"}</small></span></div>
             : <div className={`owner-side-sync ${sharePointSync.state}`}><i /><span><b>SharePoint</b><small>{sharePointSync.state === "live" ? "оновлення кожні 15 хв" : `копія ${dateTime(sharePointSync.fileModifiedAt)}`}</small></span></div>}
-          <form action="/api/auth/logout" method="post"><button type="submit" className="owner-side-logout"><LogOut size={17} />Вийти із системи</button></form>
+          <form action="/api/auth/logout" method="post"><button type="submit" className="owner-side-logout"><LogOut size={17} />{workspace === "finance" && financeRu ? "Выйти из системы" : "Вийти із системи"}</button></form>
         </div>
       </aside>
-      {mobileMenu ? <button type="button" className="owner-sidebar-backdrop" aria-label="Закрити меню" onClick={() => setMobileMenu(false)} /> : null}
+      {mobileMenu ? <button type="button" className="owner-sidebar-backdrop" aria-label={workspace === "finance" && financeRu ? "Закрыть меню" : "Закрити меню"} onClick={() => setMobileMenu(false)} /> : null}
 
       <div className="owner-workspace">
         <header className="owner-topbar">
           <div className="owner-page-context">
-            <button type="button" className="owner-icon-button owner-menu" aria-label="Відкрити меню" onClick={() => setMobileMenu((value) => !value)}>{mobileMenu ? <X size={19} /> : <Menu size={19} />}</button>
-            <div><span>Спецсервіс / {currentPage.label}</span><h1>{currentPage.label}</h1></div>
+            <button type="button" className="owner-icon-button owner-menu" aria-label={workspace === "finance" && financeRu ? "Открыть меню" : "Відкрити меню"} onClick={() => setMobileMenu((value) => !value)}>{mobileMenu ? <X size={19} /> : <Menu size={19} />}</button>
+            <div><span>{workspace === "finance" && financeRu ? "Спецсервис" : "Спецсервіс"} / {currentPage.label}</span><h1>{currentPage.label}</h1></div>
           </div>
           {viewer.financeAccess ? (
-            <nav className="owner-workspace-tabs" aria-label="Розділи кабінету">
-              <button type="button" className={workspace === "tenders" ? "active" : ""} onClick={() => navigateWorkspace("tenders")}><Landmark size={16} />Тендери</button>
-              <button type="button" className={workspace === "finance" ? "active" : ""} onClick={() => navigateWorkspace("finance")}><WalletCards size={16} />Фінанси</button>
+            <nav className="owner-workspace-tabs" aria-label={workspace === "finance" && financeRu ? "Разделы кабинета" : "Розділи кабінету"}>
+              <button type="button" className={workspace === "tenders" ? "active" : ""} onClick={() => navigateWorkspace("tenders")}><Landmark size={16} />{workspace === "finance" && financeRu ? "Тендеры" : "Тендери"}</button>
+              <button type="button" className={workspace === "finance" ? "active" : ""} onClick={() => navigateWorkspace("finance")}><WalletCards size={16} />{workspace === "finance" && financeRu ? "Финансы" : "Фінанси"}</button>
             </nav>
           ) : null}
           <div className="owner-topbar-actions">
@@ -509,7 +512,7 @@ export function OwnerDashboard() {
         </header>
 
         <main className="owner-main">
-        {workspace === "finance" ? <FinanceDashboard /> : null}
+        {workspace === "finance" ? <FinanceDashboard locale={financeLocale} onLocaleChange={setFinanceLocale} /> : null}
         {workspace === "tenders" && error ? <div className="owner-error"><CircleAlert size={16} />{error}</div> : null}
 
         {workspace === "tenders" && activeView === "overview" ? (

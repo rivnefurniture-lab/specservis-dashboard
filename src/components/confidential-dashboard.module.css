@@ -8,9 +8,13 @@
 .stickyToolbar > div:first-child > span { min-width:0; display:grid; gap:3px; }
 .stickyToolbar b { color:var(--owner-ink); font-size:14px; }
 .stickyToolbar small { overflow:hidden; color:var(--owner-muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.toolbarActions { flex:none; display:flex; align-items:center; gap:8px; }
 .modeSwitch { flex:none; display:flex; gap:4px; padding:4px; border-radius:11px; background:#eff0f6; }
 .modeSwitch button { height:38px; padding:0 15px; border:0; border-radius:8px; color:#6b6e82; background:transparent; font-size:11px; font-weight:760; cursor:pointer; }
 .modeSwitch .activeMode { color:#fff; background:var(--finance-blue); box-shadow:0 5px 13px rgba(47,42,128,.22); }
+.languageSwitch { display:flex; gap:2px; padding:4px; border:1px solid #dfe1ea; border-radius:11px; background:#fff; }
+.languageSwitch button { width:38px; height:38px; border:0; border-radius:8px; color:#7a7d90; background:transparent; font-size:10px; font-weight:850; cursor:pointer; }
+.languageSwitch .activeLanguage { color:var(--finance-blue); background:#e9e9f5; }
 
 .summaryCard,.chartCard,.tablesSection > article { overflow:hidden; border:1px solid rgba(255,255,255,.95); border-radius:23px; background:rgba(255,255,255,.96); box-shadow:0 16px 42px rgba(31,32,67,.07); }
 .summaryCard > header { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; padding:27px 29px 20px; }
@@ -43,8 +47,13 @@
 .chartCard { min-width:0; padding:24px 25px 18px; }
 .chartCard > header h2 { margin:0; color:var(--owner-ink); font-size:21px; letter-spacing:-.02em; }
 .chartCard > header p { margin:6px 0 0; color:var(--owner-muted); font-size:11px; }
-.chartCanvas { min-width:0; position:relative; margin-top:10px; }
-.chartCanvas svg { width:100%; height:300px; overflow:visible; }
+.chartLegend { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:17px; padding:10px 12px; border-radius:10px; background:#f6f7fa; }
+.chartLegend span { display:flex; align-items:center; gap:8px; color:#484c61; font-size:11px; font-weight:750; }
+.chartLegend i { width:22px; height:5px; border-radius:5px; background:var(--chart-color); }
+.chartLegend small { color:var(--owner-muted); font-size:10px; font-weight:650; }
+.chartCanvas { min-width:0; position:relative; margin-top:4px; }
+.chartCanvas svg { width:100%; height:330px; overflow:visible; }
+.chartAxis { stroke:#bfc2ce; stroke-width:1.2; }
 .chartGrid { stroke:#e4e6ee; stroke-width:1; stroke-dasharray:4 6; }
 .chartHitbox { cursor:pointer; }
 .metricBar { fill:var(--chart-color); cursor:pointer; transition:opacity .15s ease,filter .15s ease; }
@@ -52,6 +61,8 @@
 .metricPoint { fill:var(--chart-color); stroke:#fff; stroke-width:3; cursor:pointer; transition:r .12s ease; }
 .chartCanvas g:hover .metricBar,.chartCanvas g:focus .metricBar { filter:brightness(1.12); }
 .chartLabel { fill:#73778c; font:650 13px var(--font-geist-sans); }
+.axisTick { fill:#85899a; font:620 11px var(--font-geist-sans); }
+.axisTitle { fill:#777b8f; font:700 11px var(--font-geist-sans); }
 .blueChart { --chart-color:var(--finance-blue); }
 .greenChart { --chart-color:var(--finance-green); }
 .orangeChart { --chart-color:var(--finance-orange); }
@@ -62,7 +73,7 @@
 .chartTooltip small { color:#c9c7ff; font-size:9px; }
 .twoCharts { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 .twoCharts .chartCard { padding-bottom:12px; }
-.twoCharts .chartCanvas svg { height:270px; }
+.twoCharts .chartCanvas svg { height:300px; }
 
 .tablesSection { display:grid; grid-template-columns:1fr; gap:18px; }
 .tablesSection > article > header { padding:23px 25px 15px; }
@@ -127,8 +138,10 @@
   .financeApp { gap:12px; }
   .stickyToolbar { top:6px; align-items:stretch; flex-direction:column; gap:8px; }
   .stickyToolbar > div:first-child { display:none; }
+  .toolbarActions { width:100%; }
   .modeSwitch { width:100%; }
   .modeSwitch button { flex:1; padding:0 7px; }
+  .languageSwitch { flex:none; }
   .summaryCard > header { align-items:flex-start; flex-direction:column; padding:21px 17px 16px; }
   .summaryCard > header > span { text-align:left; }
   .kpiGrid { grid-template-columns:1fr; margin:0 17px 18px; }
